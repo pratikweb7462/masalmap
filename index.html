@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>India Live Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <!-- Scripts -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-database-compat.js"></script>
+
+  <script>
+    // 🔐 YOUR FIREBASE CONFIG HERE
+    const firebaseConfig = {
+      apiKey: "AIzaSyD2hEC87pCCOuVYZHFzbiXfxQxXswPmKk4",
+      authDomain: "indialivemap-2fc56.firebaseapp.com",
+      databaseURL: "https://indialivemap-2fc56-default-rtdb.firebaseio.com",
+      projectId: "indialivemap-2fc56",
+      storageBucket: "indialivemap-2fc56.firebasestorage.app",
+      messagingSenderId: "116082678719",
+      appId: "1:116082678719:web:6f59ed40e675103a2edf0a"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const userId = 'user_' + Math.random().toString(36).substr(2, 6);
+    const sessionId = `session_${userId}_${Date.now()}`;
+
+    const map = L.map('map').setView([22.9734, 78.6569], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    function getUserIcon(id) {
+      return L.icon({
+        iconUrl: `https://api.dicebear.com/7.x/personas/svg?seed=${id}`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40]
+      });
+    }
+
+    let myPath = [];
+    let myMarker, myPolyline;
+    let prevLatLng = null;
+
+    function updateMap(lat, lon) {
+      const latlng = [lat, lon];
+      myPath.push(latlng);
+
+      if (!myPolyline) {
+        myPolyline = L.polyline(myPath, { color: "blue" }).addTo(map);
+      } else {
+        myPolyline.setLatLngs(myPath);
+      }
+
+      if (!myMarker) {
+        myMarker = L.marker(latlng, { icon: getUserIcon(userId) }).addTo(map).bindPopup("You").openPopup();
+      } else {
+        myMarker.setLatLng(latlng);
+      }
+
+      map.setView(latlng, 13);
+
+      // 🔀 Save to Firebase
+      db.ref(`sessions/${userId}/${sessionId}`).push({ lat, lon, timestamp: Date.now() });
+
+      // ➡️ Request route from last point to current
+      if (prevLatLng) {
+        drawDirection(prevLatLng, latlng);
+      }
+
+      prevLatLng = latlng;
+    }
+
+    function drawDirection(from, to) {
+      const token = "YOUR_MAPBOX_ACCESS_TOKEN"; // 🔑 Your Mapbox token
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from[1]},${from[0]};${to[1]},${to[0]}?geometries=geojson&access_token=${token}`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          const route = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+          L.polyline(route, { color: 'orange', dashArray: '5,5' }).addTo(map);
+        })
+        .catch(console.error);
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        pos => {
+          updateMap(pos.coords.latitude, pos.coords.longitude);
+        },
+        err => alert("Location error: " + err.message),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    } else {
+      alert("Geolocation not supported.");
+    }
+
+    // 🔄 Watch all other users' paths
+    db.ref("sessions").on("child_added", snap => {
+      const otherUser = snap.key;
+      if (otherUser === userId) return;
+
+      let otherColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
+      let otherPath = [];
+      let otherPolyline, otherMarker;
+
+      db.ref(`sessions/${otherUser}`).on("child_added", sessionSnap => {
+        sessionSnap.forEach(locSnap => {
+          const { lat, lon } = locSnap.val();
+          const point = [lat, lon];
+          otherPath.push(point);
+
+          if (!otherPolyline) {
+            otherPolyline = L.polyline(otherPath, { color: otherColor }).addTo(map);
+          } else {
+            otherPolyline.setLatLngs(otherPath);
+          }
+
+          if (!otherMarker) {
+            otherMarker = L.marker(point, { icon: getUserIcon(otherUser) }).addTo(map).bindPopup(`User: ${otherUser}`);
+          } else {
+            otherMarker.setLatLng(point);
+          }
+        });
+      });
+    });
+  </script>
+</body>
+
+</html>
