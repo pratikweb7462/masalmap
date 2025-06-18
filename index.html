@@ -32,16 +32,27 @@
   <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-database-compat.js"></script>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyD2hEC87pCCOuVYZHFzbiXfxQxXswPmKk4",
-      authDomain: "indialivemap-2fc56.firebaseapp.com",
-      databaseURL: "https://indialivemap-2fc56-default-rtdb.firebaseio.com",
-      projectId: "indialivemap-2fc56",
-      storageBucket: "indialivemap-2fc56.firebasestorage.app",
-      messagingSenderId: "116082678719",
-      appId: "1:116082678719:web:6f59ed40e675103a2edf0a"
-    };
+  
+    <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
+    authDomain: "myindiamapamritkal.firebaseapp.com",
+    databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
+    projectId: "myindiamapamritkal",
+    storageBucket: "myindiamapamritkal.firebasestorage.app",
+    messagingSenderId: "830924864737",
+    appId: "1:830924864737:web:7a096f506d004e19358ba0"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.database();
