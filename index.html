@@ -1,135 +1,129 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>India Live Location Tracker</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+  />
   <style>
-    body, html { height: 100%; margin: 0; }
-    #map { height: 100vh; }
+    #map {
+      height: 100vh;
+    }
+    .leaflet-popup-content-wrapper {
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <div class="container-fluid">
-    <div class="row">
-      <div class="col-md-3 p-3 bg-light">
-        <h4>Live Tracker</h4>
-        <button id="loginBtn" class="btn btn-success mb-2">Login with Google</button>
-        <button id="logoutBtn" class="btn btn-danger mb-2 d-none">Logout</button>
-        <p id="userInfo"></p>
-      </div>
-      <div class="col-md-9 p-0">
-        <div id="map"></div>
-      </div>
-    </div>
-  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-database-compat.js"></script>
+<button id="loginBtn">Login with Google</button>
+<div id="map"></div>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
-      authDomain: "myindiamapamritkal.firebaseapp.com",
-      databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
-      projectId: "myindiamapamritkal",
-      storageBucket: "myindiamapamritkal.firebasestorage.app",
-      messagingSenderId: "830924864737",
-      appId: "1:830924864737:web:7a096f506d004e19358ba0"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.database();
+<!-- Leaflet Map -->
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
-    let map = L.map('map').setView([22.9734, 78.6569], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-database-compat.js"></script>
 
-    let userMarker, polyline;
-    let pathCoords = [];
-    const markers = {};
+<script>
+  // Your Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
+    authDomain: "indialivemap-2fc56.firebaseapp.com",
+    databaseURL: "https://indialivemap-2fc56-default-rtdb.firebaseio.com",
+    projectId: "indialivemap-2fc56",
+    storageBucket: "indialivemap-2fc56.firebasestorage.app",
+    messagingSenderId: "116082678719",
+    appId: "1:116082678719:web:6f59ed40e675103a2edf0a"
+  };
 
-    function updateMap(userId, lat, lng) {
-      if (!markers[userId]) {
-        markers[userId] = L.marker([lat, lng]).addTo(map).bindPopup(userId);
-      } else {
-        markers[userId].setLatLng([lat, lng]);
-      }
-    }
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
 
-    function drawPath() {
-      if (polyline) map.removeLayer(polyline);
-      polyline = L.polyline(pathCoords, { color: 'blue' }).addTo(map);
-    }
+  const map = L.map("map").setView([21.1466, 79.0888], 5);
 
-    function startTracking(user) {
-      navigator.geolocation.watchPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+  }).addTo(map);
 
-        const time = Date.now();
-        const locRef = db.ref('locations/' + user.uid);
-        const histRef = db.ref('location-history/' + user.uid + '/' + time);
+  // Custom icon
+  const customIcon = L.icon({
+    iconUrl: "http://202.131.117.225:44080/silvertouch/fire-masal.png",
+    iconSize: [40, 40],
+    iconAnchor: [20, 40],
+    popupAnchor: [0, -40]
+  });
 
-        locRef.set({ lat, lng, name: user.displayName });
-        histRef.set({ lat, lng });
+  let currentUserId = null;
+  const markers = {};
+  const polylines = {};
 
-        pathCoords.push([lat, lng]);
-        drawPath();
-        updateMap(user.uid, lat, lng);
-      }, err => console.error(err), { enableHighAccuracy: true });
-
-      // Listen to all users
-      db.ref('locations').on('value', snap => {
-        const data = snap.val();
-        if (data) {
-          for (const uid in data) {
-            const u = data[uid];
-            updateMap(uid, u.lat, u.lng);
-          }
-        }
-      });
-
-      // Load your history
-      db.ref('location-history/' + user.uid).on('value', snap => {
-        const history = snap.val();
-        pathCoords = [];
-        for (const t in history) {
-          const { lat, lng } = history[t];
-          pathCoords.push([lat, lng]);
-        }
-        drawPath();
-      });
-    }
-
-    // Auth Handlers
-    document.getElementById('loginBtn').onclick = () => {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      auth.signInWithPopup(provider);
-    };
-    document.getElementById('logoutBtn').onclick = () => {
-      auth.signOut();
-    };
-
-    auth.onAuthStateChanged(user => {
-      const userInfo = document.getElementById('userInfo');
-      if (user) {
-        document.getElementById('loginBtn').classList.add('d-none');
-        document.getElementById('logoutBtn').classList.remove('d-none');
-        userInfo.innerText = `Logged in as ${user.displayName}`;
-        startTracking(user);
-      } else {
-        document.getElementById('loginBtn').classList.remove('d-none');
-        document.getElementById('logoutBtn').classList.add('d-none');
-        userInfo.innerText = '';
-      }
+  document.getElementById("loginBtn").addEventListener("click", () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).then((result) => {
+      currentUserId = result.user.uid;
+      startTracking();
     });
-  </script>
+  });
+
+  function startTracking() {
+    if (!navigator.geolocation) {
+      alert("Geolocation not supported");
+      return;
+    }
+
+    navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        db.ref("locations/" + currentUserId).push({
+          lat,
+          lng,
+          timestamp: Date.now(),
+        });
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 5000
+      }
+    );
+  }
+
+  db.ref("locations").on("value", (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    for (const userId in data) {
+      const locations = Object.values(data[userId]);
+      const last = locations[locations.length - 1];
+
+      if (!markers[userId]) {
+        markers[userId] = L.marker([last.lat, last.lng], { icon: customIcon })
+          .addTo(map)
+          .bindPopup(`User: ${userId}`);
+      } else {
+        markers[userId].setLatLng([last.lat, last.lng]);
+      }
+
+      if (polylines[userId]) {
+        map.removeLayer(polylines[userId]);
+      }
+
+      const latlngs = locations.map((loc) => [loc.lat, loc.lng]);
+      polylines[userId] = L.polyline(latlngs, { color: "blue" }).addTo(map);
+    }
+  });
+</script>
 </body>
 </html>
