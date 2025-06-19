@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>India Live Map - Leaflet + Firebase</title>
+  <title>India Live Map - OTP + Routing</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -14,16 +14,15 @@
       z-index: 1000;
       display: flex;
       gap: 10px;
+      flex-wrap: wrap;
     }
-    #topBar button, #topBar input {
+    #topBar input, #topBar button, #topBar select {
       padding: 8px 12px;
       font-size: 14px;
       border-radius: 4px;
       border: none;
     }
-    #loginBtn { background-color: #007bff; color: white; }
-    #logoutBtn { background-color: #dc3545; color: white; display: none; }
-    #searchInput { width: 220px; }
+    #logoutBtn { background-color: #dc3545; color: white; }
     .popup-user {
       display: flex;
       align-items: center;
@@ -39,11 +38,18 @@
 <body>
 
 <div id="topBar">
-  <button id="loginBtn">Login with Google</button>
-  <button id="logoutBtn">Logout</button>
-  <input type="text" id="searchInput" placeholder="Search UID, Email or Mobile" />
+  <input type="text" id="phoneInput" placeholder="+91XXXXXXXXXX" />
+  <button id="sendOtpBtn">Send OTP</button>
+  <input type="text" id="otpInput" placeholder="Enter OTP" style="display:none;" />
+  <button id="verifyOtpBtn" style="display:none;">Verify OTP</button>
+  <button id="logoutBtn" style="display:none;">Logout</button>
+  <select id="userSelect">
+    <option value="">Route to...</option>
+  </select>
 </div>
+
 <div id="map"></div>
+<div id="recaptcha-container"></div>
 
 <!-- Leaflet -->
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -54,7 +60,8 @@
 <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-database-compat.js"></script>
 
 <script>
-  // Firebase config
+  const ORS_API_KEY = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6";
+
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
     authDomain: "myindiamapamritkal.firebaseapp.com",
@@ -82,22 +89,57 @@
   const markers = {};
   const polylines = {};
   const userInfoMap = {};
+  let firstUpdate = true;
+  let routeLine = null;
 
-  document.getElementById("loginBtn").addEventListener("click", () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).then((result) => {
-      currentUser = result.user;
-      document.getElementById("loginBtn").style.display = "none";
-      document.getElementById("logoutBtn").style.display = "inline-block";
-      const mobile = prompt("Enter your mobile number") || "Unknown";
-      userInfoMap[currentUser.uid] = {
-        name: currentUser.displayName,
-        email: currentUser.email,
-        photo: currentUser.photoURL,
-        mobile: mobile
-      };
-      startTracking();
-    });
+  window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier("recaptcha-container", {
+    size: "invisible",
+    callback: () => console.log("Recaptcha resolved")
+  });
+
+  document.getElementById("sendOtpBtn").addEventListener("click", () => {
+    const phoneNumber = document.getElementById("phoneInput").value;
+    if (!phoneNumber.startsWith("+91")) {
+      alert("Use +91 format for phone number.");
+      return;
+    }
+
+    const appVerifier = window.recaptchaVerifier;
+    auth.signInWithPhoneNumber(phoneNumber, appVerifier)
+      .then((confirmationResult) => {
+        window.confirmationResult = confirmationResult;
+        document.getElementById("otpInput").style.display = "inline-block";
+        document.getElementById("verifyOtpBtn").style.display = "inline-block";
+        document.getElementById("sendOtpBtn").disabled = true;
+      })
+      .catch((error) => {
+        console.error("OTP send error", error);
+        alert("Error sending OTP");
+      });
+  });
+
+  document.getElementById("verifyOtpBtn").addEventListener("click", () => {
+    const otp = document.getElementById("otpInput").value;
+    if (!otp) return alert("Enter OTP");
+
+    window.confirmationResult.confirm(otp)
+      .then((result) => {
+        currentUser = result.user;
+        document.getElementById("logoutBtn").style.display = "inline-block";
+        document.getElementById("otpInput").style.display = "none";
+        document.getElementById("verifyOtpBtn").style.display = "none";
+        userInfoMap[currentUser.uid] = {
+          name: "User",
+          email: "",
+          photo: "",
+          mobile: currentUser.phoneNumber
+        };
+        startTracking();
+      })
+      .catch((error) => {
+        console.error("OTP verification failed", error);
+        alert("Invalid OTP");
+      });
   });
 
   document.getElementById("logoutBtn").addEventListener("click", () => {
@@ -109,10 +151,17 @@
       alert("Geolocation not supported");
       return;
     }
+
     navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
         const info = userInfoMap[currentUser.uid];
+
+        if (firstUpdate) {
+          map.setView([lat, lng], 15);
+          firstUpdate = false;
+        }
+
         db.ref("locations/" + currentUser.uid).push({
           lat, lng, timestamp: Date.now(),
           name: info.name,
@@ -130,7 +179,9 @@
     db.ref("locations").on("value", (snapshot) => {
       const data = snapshot.val();
       if (!data) return;
-      const search = document.getElementById("searchInput").value.toLowerCase();
+
+      const userSelect = document.getElementById("userSelect");
+      userSelect.innerHTML = `<option value="">Route to...</option>`;
 
       for (const userId in data) {
         const all = Object.values(data[userId]).filter(l => l.lat && l.lng);
@@ -138,21 +189,10 @@
 
         const last = all[all.length - 1];
         const name = last.name || "User";
-        const photo = last.photo || "";
         const mobile = last.mobile || "NA";
         const email = last.email || "";
+        const photo = last.photo || "";
         const timestamp = last.timestamp || 0;
-
-        const match = userId.toLowerCase().includes(search) ||
-                      email.toLowerCase().includes(search) ||
-                      mobile.toLowerCase().includes(search);
-
-        if (search && !match) {
-          if (markers[userId]) map.removeLayer(markers[userId]);
-          if (polylines[userId]) map.removeLayer(polylines[userId]);
-          continue;
-        }
-
         const isOnline = Date.now() - timestamp < 30000;
         const statusDot = `<span style="color:${isOnline ? "green" : "red"}">●</span>`;
 
@@ -169,9 +209,7 @@
         const latlng = [last.lat, last.lng];
 
         if (!markers[userId]) {
-          markers[userId] = L.marker(latlng, { icon: customIcon })
-            .addTo(map)
-            .bindPopup(popupHtml);
+          markers[userId] = L.marker(latlng, { icon: customIcon }).addTo(map).bindPopup(popupHtml);
         } else {
           markers[userId].setLatLng(latlng).bindPopup(popupHtml);
           if (!map.hasLayer(markers[userId])) map.addLayer(markers[userId]);
@@ -180,11 +218,44 @@
         const path = all.map(p => [p.lat, p.lng]);
         if (polylines[userId]) map.removeLayer(polylines[userId]);
         polylines[userId] = L.polyline(path, { color: "blue" }).addTo(map);
+
+        // Populate dropdown
+        if (currentUser && userId !== currentUser.uid) {
+          const option = document.createElement("option");
+          option.value = userId;
+          option.text = `${name} (${userId.slice(0, 5)}...)`;
+          userSelect.appendChild(option);
+        }
       }
     });
   }
 
-  document.getElementById("searchInput").addEventListener("input", renderMap);
+  async function drawRouteToSelectedUser() {
+    const selectedId = document.getElementById("userSelect").value;
+    if (!selectedId || !currentUser || !markers[currentUser.uid] || !markers[selectedId]) return;
+
+    const from = markers[currentUser.uid].getLatLng();
+    const to = markers[selectedId].getLatLng();
+
+    const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      const coords = data.features[0].geometry.coordinates;
+      const latLngs = coords.map(([lng, lat]) => [lat, lng]);
+
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(latLngs, { color: "red", weight: 4 }).addTo(map);
+      map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+    } catch (err) {
+      console.error("Route API error:", err);
+      alert("Unable to fetch route.");
+    }
+  }
+
+  document.getElementById("userSelect").addEventListener("change", drawRouteToSelectedUser);
+
   window.onload = () => renderMap();
 </script>
 
