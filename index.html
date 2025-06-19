@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Animated Delivery Route - Dropdown + Highlight</title>
+  <title>Animated Delivery Route - Fixed</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -83,6 +83,11 @@ function drawRoute() {
   })
   .then(res => res.json())
   .then(data => {
+    if (!data || !data.features || !data.features[0]) {
+      alert("❌ No route found. Try different cities.");
+      return;
+    }
+
     coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
     if (polyline) map.removeLayer(polyline);
     polyline = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
@@ -104,7 +109,10 @@ function drawRoute() {
     highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
     animateMarker();
   })
-  .catch(err => alert("Routing error: " + err.message));
+  .catch(err => {
+    console.error("Routing error:", err);
+    alert("🚫 Routing failed. Check your API key or network connection.");
+  });
 }
 </script>
 </body>
