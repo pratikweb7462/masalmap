@@ -1,150 +1,265 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>India Live GPS Tracker</title>
-  <meta charset="UTF-8" />
+  <title>India Live Map - Walking Route Only</title>
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- jQuery + Bootstrap -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-database-compat.js"></script>
-
-  <!-- Google Maps API (with your key) -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI&libraries=places"></script>
-
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
-    #map { height: 90vh; width: 100%; }
+    html, body { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+    #map { height: 100vh; }
+    #topBar {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 1000;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #topBar input, #topBar button, #topBar select {
+      padding: 8px 12px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: none;
+    }
+    #logoutBtn { background-color: #dc3545; color: white; }
+    .popup-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .popup-user img {
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+    }
   </style>
 </head>
 <body>
-  <div class="container-fluid">
-    <h4 class="text-center mt-2">🇮🇳 India Live GPS Tracker with Route</h4>
-    <div id="map"></div>
-  </div>
 
-  <script>
-    // ✅ Firebase Config
-    const firebaseConfig = {
-      apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
-      authDomain: "myindiamapamritkal.firebaseapp.com",
-      databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
-      projectId: "myindiamapamritkal",
-      storageBucket: "myindiamapamritkal.firebasestorage.app",
-      messagingSenderId: "830924864737",
-      appId: "1:830924864737:web:7a096f506d004e19358ba0"
-    };
+<div id="topBar">
+  <input type="text" id="phoneInput" placeholder="+91XXXXXXXXXX" />
+  <button id="sendOtpBtn">Send OTP</button>
+  <input type="text" id="otpInput" placeholder="Enter OTP" style="display:none;" />
+  <button id="verifyOtpBtn" style="display:none;">Verify OTP</button>
+  <button id="logoutBtn" style="display:none;">Logout</button>
+  <select id="userSelect">
+    <option value="">Route to...</option>
+  </select>
+</div>
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+<div id="map"></div>
+<div id="recaptcha-container"></div>
 
-    // ✅ Constants
-    const userId = "user_" + Math.floor(Math.random() * 10000);
-    const iconUrl = "https://www.silvertouch.com/mailer/fire-masal.png";
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
-    let map, myMarker;
-    const markers = {};
-    const directionsService = new google.maps.DirectionsService();
-    const directionsRenderer = new google.maps.DirectionsRenderer();
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-database-compat.js"></script>
 
-    function initMap(lat, lng) {
-      map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat, lng },
-        zoom: 15,
-      });
+<script>
+  const ORS_API_KEY = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6"; // walking-only
 
-      directionsRenderer.setMap(map);
+  const firebaseConfig = {
+    apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
+    authDomain: "myindiamapamritkal.firebaseapp.com",
+    databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
+    projectId: "myindiamapamritkal",
+    storageBucket: "myindiamapamritkal.firebasestorage.app",
+    messagingSenderId: "830924864737",
+    appId: "1:830924864737:web:7a096f506d004e19358ba0"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
 
-      myMarker = new google.maps.Marker({
-        map,
-        position: { lat, lng },
-        icon: {
-          url: iconUrl,
-          scaledSize: new google.maps.Size(40, 40),
-        },
-        title: "You",
-      });
+  const map = L.map("map").setView([21.1466, 79.0888], 5);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+
+  const customIcon = L.icon({
+    iconUrl: "https://www.silvertouch.com/mailer/fire-masal.png",
+    iconSize: [40, 40],
+    iconAnchor: [20, 40],
+    popupAnchor: [0, -40]
+  });
+
+  let currentUser = null;
+  const markers = {};
+  const polylines = {};
+  const userInfoMap = {};
+  let firstUpdate = true;
+  let routeLine = null;
+
+  window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier("recaptcha-container", {
+    size: "invisible",
+    callback: () => console.log("Recaptcha resolved")
+  });
+
+  document.getElementById("sendOtpBtn").addEventListener("click", () => {
+    const phoneNumber = document.getElementById("phoneInput").value;
+    if (!phoneNumber.startsWith("+91")) {
+      alert("Use +91 format for phone number.");
+      return;
     }
 
-    function updateLocation() {
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition((position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
+    const appVerifier = window.recaptchaVerifier;
+    auth.signInWithPhoneNumber(phoneNumber, appVerifier)
+      .then((confirmationResult) => {
+        window.confirmationResult = confirmationResult;
+        document.getElementById("otpInput").style.display = "inline-block";
+        document.getElementById("verifyOtpBtn").style.display = "inline-block";
+        document.getElementById("sendOtpBtn").disabled = true;
+      })
+      .catch((error) => {
+        console.error("OTP send error", error);
+        alert("Error sending OTP");
+      });
+  });
 
-          if (!map) initMap(lat, lng);
-          if (myMarker) myMarker.setPosition({ lat, lng });
+  document.getElementById("verifyOtpBtn").addEventListener("click", () => {
+    const otp = document.getElementById("otpInput").value;
+    if (!otp) return alert("Enter OTP");
 
-          db.ref("locations/" + userId).set({
-            lat,
-            lng,
-            name: "Fire Tracker"
-          });
-        });
-      } else {
-        alert("Geolocation not supported");
-      }
+    window.confirmationResult.confirm(otp)
+      .then((result) => {
+        currentUser = result.user;
+        document.getElementById("logoutBtn").style.display = "inline-block";
+        document.getElementById("otpInput").style.display = "none";
+        document.getElementById("verifyOtpBtn").style.display = "none";
+        userInfoMap[currentUser.uid] = {
+          name: "User",
+          email: "",
+          photo: "",
+          mobile: currentUser.phoneNumber
+        };
+        startTracking();
+      })
+      .catch((error) => {
+        console.error("OTP verification failed", error);
+        alert("Invalid OTP");
+      });
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    auth.signOut().then(() => location.reload());
+  });
+
+  function startTracking() {
+    if (!navigator.geolocation) {
+      alert("Geolocation not supported");
+      return;
     }
 
-    function trackUsers() {
-      db.ref("locations").on("value", (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
+    navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        const info = userInfoMap[currentUser.uid];
 
-        for (let id in data) {
-          if (id === userId) continue;
-          const { lat, lng, name } = data[id];
-
-          if (!markers[id]) {
-            markers[id] = new google.maps.Marker({
-              map,
-              position: { lat, lng },
-              icon: {
-                url: iconUrl,
-                scaledSize: new google.maps.Size(40, 40),
-              },
-              title: name
-            });
-
-            // 🗺️ Click to route
-            markers[id].addListener("click", () => {
-              navigator.geolocation.getCurrentPosition((pos) => {
-                const origin = {
-                  lat: pos.coords.latitude,
-                  lng: pos.coords.longitude
-                };
-
-                const destination = { lat, lng };
-
-                directionsService.route({
-                  origin,
-                  destination,
-                  travelMode: "WALKING"
-                }, (result, status) => {
-                  if (status === "OK") {
-                    directionsRenderer.setDirections(result);
-                  } else {
-                    alert("Failed to get route: " + status);
-                  }
-                });
-              });
-            });
-
-          } else {
-            markers[id].setPosition({ lat, lng });
-          }
+        if (firstUpdate) {
+          map.setView([lat, lng], 15);
+          firstUpdate = false;
         }
-      });
-    }
 
-    // ✅ Start
-    updateLocation();
-    trackUsers();
-  </script>
+        db.ref("locations/" + currentUser.uid).push({
+          lat, lng, timestamp: Date.now(),
+          name: info.name,
+          photo: info.photo,
+          mobile: info.mobile,
+          email: info.email
+        });
+      },
+      (err) => console.error("Geolocation error:", err),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  }
+
+  function renderMap() {
+    db.ref("locations").on("value", (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+
+      const userSelect = document.getElementById("userSelect");
+      userSelect.innerHTML = `<option value="">Route to...</option>`;
+
+      for (const userId in data) {
+        const all = Object.values(data[userId]).filter(l => l.lat && l.lng);
+        if (all.length === 0) continue;
+
+        const last = all[all.length - 1];
+        const name = last.name || "User";
+        const mobile = last.mobile || "NA";
+        const email = last.email || "";
+        const photo = last.photo || "";
+        const timestamp = last.timestamp || 0;
+        const isOnline = Date.now() - timestamp < 30000;
+        const statusDot = `<span style="color:${isOnline ? "green" : "red"}">●</span>`;
+
+        const popupHtml = `
+          <div class="popup-user">
+            ${photo ? `<img src="${photo}" alt="Photo" />` : ""}
+            <div>
+              <strong>${name}</strong> ${statusDot}<br/>
+              <small>${email}<br/>📱 ${mobile}</small>
+            </div>
+          </div>
+        `;
+
+        const latlng = [last.lat, last.lng];
+
+        if (!markers[userId]) {
+          markers[userId] = L.marker(latlng, { icon: customIcon }).addTo(map).bindPopup(popupHtml);
+        } else {
+          markers[userId].setLatLng(latlng).bindPopup(popupHtml);
+          if (!map.hasLayer(markers[userId])) map.addLayer(markers[userId]);
+        }
+
+        const path = all.map(p => [p.lat, p.lng]);
+        if (polylines[userId]) map.removeLayer(polylines[userId]);
+        polylines[userId] = L.polyline(path, { color: "blue" }).addTo(map);
+
+        if (currentUser && userId !== currentUser.uid) {
+          const option = document.createElement("option");
+          option.value = userId;
+          option.text = `${name} (${userId.slice(0, 5)}...)`;
+          userSelect.appendChild(option);
+        }
+      }
+    });
+  }
+
+  async function drawRouteToSelectedUser() {
+    const selectedId = document.getElementById("userSelect").value;
+    const mode = "foot-walking"; // walking-only
+
+    if (!selectedId || !currentUser || !markers[currentUser.uid] || !markers[selectedId]) return;
+
+    const from = markers[currentUser.uid].getLatLng();
+    const to = markers[selectedId].getLatLng();
+
+    const url = `https://api.openrouteservice.org/v2/directions/${mode}?api_key=${ORS_API_KEY}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      const coords = data.features[0].geometry.coordinates;
+      const latLngs = coords.map(([lng, lat]) => [lat, lng]);
+
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(latLngs, { color: "green", weight: 4 }).addTo(map);
+      map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+
+    } catch (err) {
+      console.error("Route API error:", err);
+      alert("Unable to fetch walking route.");
+    }
+  }
+
+  document.getElementById("userSelect").addEventListener("change", drawRouteToSelectedUser);
+
+  window.onload = () => renderMap();
+</script>
+
 </body>
 </html>
