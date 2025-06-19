@@ -61,6 +61,7 @@
 
   let map, userId, userName = "", userPhone = "", userMarker = null, destMarker = null, routeLine = null;
   let destinationCoords = null;
+  let userNamePrompted = false;
 
   const mashalIcon = L.icon({
     iconUrl: 'https://www.silvertouch.com/mailer/fire-masal.png',
@@ -74,9 +75,13 @@
       userId = user.uid;
       userName = user.displayName || user.phoneNumber || "User";
       userPhone = user.phoneNumber || "";
+
       if (user.displayName === null && !userNamePrompted) {
         const namePrompt = prompt("Enter your name:");
-        if (namePrompt) userName = namePrompt;
+        if (namePrompt) {
+          userName = namePrompt;
+          userNamePrompted = true;
+        }
       }
 
       document.getElementById("loginDiv").style.display = "none";
@@ -95,14 +100,16 @@
 
   function phoneLogin() {
     const phone = document.getElementById("phone").value;
-    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-      size: 'invisible'
-    });
-    auth.signInWithPhoneNumber(phone, window.recaptchaVerifier).then(confirmationResult => {
-      window.confirmationResult = confirmationResult;
-      document.getElementById("otp").style.display = "inline";
-      document.getElementById("verifyBtn").style.display = "inline";
-    }).catch(alert);
+    setTimeout(() => {
+      window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+        size: 'invisible'
+      });
+      auth.signInWithPhoneNumber(phone, window.recaptchaVerifier).then(confirmationResult => {
+        window.confirmationResult = confirmationResult;
+        document.getElementById("otp").style.display = "inline";
+        document.getElementById("verifyBtn").style.display = "inline";
+      }).catch(alert);
+    }, 500);
   }
 
   function verifyOTP() {
@@ -111,6 +118,7 @@
       const name = prompt("Enter your name:");
       if (name) {
         userName = name;
+        userNamePrompted = true;
       }
     }).catch(alert);
   }
@@ -137,7 +145,6 @@
       const users = snap.val() || {};
       const now = Date.now();
 
-      // Remove all old markers
       map.eachLayer(layer => {
         if (layer instanceof L.Marker && layer !== userMarker && layer !== destMarker) {
           map.removeLayer(layer);
@@ -208,7 +215,6 @@
           timestamp: Date.now()
         });
 
-        // Show custom popup
         let popupContent = `<strong>${userName}</strong><br>`;
         if (auth.currentUser.photoURL) {
           popupContent += `<img src="${auth.currentUser.photoURL}" width="60" height="60" style="border-radius:50%;">`;
@@ -232,6 +238,7 @@
     }
   }
 </script>
+
 
 
 </body>
