@@ -1,124 +1,111 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Animated Delivery Route</title>
+  <title>Animated Delivery Route - Dropdown + Highlight</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
   <style>
     body, html { margin: 0; padding: 0; height: 100%; }
-    #map { height: 100%; width: 75%; float: left; }
+    #map { height: 100%; width: 70%; float: left; }
     #panel {
-      width: 25%;
-      float: left;
-      padding: 1rem;
-      overflow-y: auto;
-      height: 100%;
-      background: #f9f9f9;
+      width: 30%; float: left; padding: 1rem;
+      overflow-y: auto; height: 100%; background: #f7f7f7;
       border-left: 1px solid #ccc;
     }
-    input, button {
-      width: 100%;
-      margin-bottom: 10px;
-      padding: 8px;
-    }
-    ol {
-      padding-left: 20px;
-    }
+    select, button { width: 100%; padding: 10px; margin-bottom: 10px; }
+    ol { padding-left: 20px; }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div id="panel">
-    <h3>📍 Route Planner</h3>
-    <input id="src" placeholder="Source (lat,lng)" value="23.0225,72.5714">
-    <input id="dst" placeholder="Destination (lat,lng)" value="23.2156,72.6369">
-    <button onclick="startRoute()">Draw Route</button>
-    <h4>📜 Steps</h4>
-    <ol id="steps"></ol>
-  </div>
+<div id="map"></div>
+<div id="panel">
+  <h3>📍 Delivery Route</h3>
+  <label>Source City:</label>
+  <select id="source">
+    <option value="23.0225,72.5714">Ahmedabad</option>
+    <option value="28.7041,77.1025">Delhi</option>
+    <option value="19.0760,72.8777">Mumbai</option>
+  </select>
+  <label>Destination City:</label>
+  <select id="destination">
+    <option value="23.2156,72.6369">Gandhinagar</option>
+    <option value="28.4595,77.0266">Gurgaon</option>
+    <option value="18.5204,73.8567">Pune</option>
+  </select>
+  <button onclick="drawRoute()">Start Delivery</button>
+  <h4>📜 Directions</h4>
+  <ol id="steps"></ol>
+</div>
 
-  <script>
-    const map = L.map('map').setView([22.9734, 78.6569], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+<script>
+const map = L.map('map').setView([22.9734, 78.6569], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
 
-    const iconUrl = "https://www.silvertouch.com/mailer/fire-masal.png";
-    const deliveryIcon = L.icon({
-      iconUrl,
-      iconSize: [40, 40],
-      iconAnchor: [20, 40]
+const deliveryIcon = L.icon({
+  iconUrl: "https://www.silvertouch.com/mailer/fire-masal.png",
+  iconSize: [40, 40], iconAnchor: [20, 40]
+});
+
+let marker, polyline, coords = [], index = 0;
+let highlightLine;
+
+function animateMarker() {
+  if (!marker || index >= coords.length) {
+    index = 0;
+    marker.setLatLng(coords[0]);
+    if (highlightLine) map.removeLayer(highlightLine);
+    highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
+  }
+  marker.setLatLng(coords[index]);
+  highlightLine.addLatLng(coords[index]);
+  index++;
+  if (index < coords.length) setTimeout(animateMarker, 300);
+}
+
+function drawRoute() {
+  const src = document.getElementById("source").value.split(",").map(Number);
+  const dst = document.getElementById("destination").value.split(",").map(Number);
+  const stepsList = document.getElementById("steps");
+  stepsList.innerHTML = "";
+
+  fetch("https://api.openrouteservice.org/v2/directions/foot-walking", {
+    method: "POST",
+    headers: {
+      'Authorization': "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6",
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ coordinates: [[src[1], src[0]], [dst[1], dst[0]]] })
+  })
+  .then(res => res.json())
+  .then(data => {
+    coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+    if (polyline) map.removeLayer(polyline);
+    polyline = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
+    map.fitBounds(polyline.getBounds());
+
+    if (!marker) {
+      marker = L.marker(coords[0], { icon: deliveryIcon }).addTo(map);
+    }
+
+    const steps = data.features[0].properties.segments[0].steps;
+    steps.forEach(step => {
+      const li = document.createElement("li");
+      li.textContent = step.instruction;
+      stepsList.appendChild(li);
     });
 
-    let deliveryMarker, polyline, animationIndex = 0, coords = [];
-
-    function moveMarker() {
-      if (animationIndex >= coords.length) return;
-      deliveryMarker.setLatLng(coords[animationIndex]);
-      animationIndex++;
-      setTimeout(moveMarker, 500); // Adjust speed here
-    }
-
-    function startRoute() {
-      const srcInput = document.getElementById("src").value.trim();
-      const dstInput = document.getElementById("dst").value.trim();
-      const stepsList = document.getElementById("steps");
-      stepsList.innerHTML = "";
-
-      const [srcLat, srcLng] = srcInput.split(",").map(Number);
-      const [dstLat, dstLng] = dstInput.split(",").map(Number);
-
-      const apiKey = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6";
-      fetch("https://api.openrouteservice.org/v2/directions/foot-walking", {
-        method: "POST",
-        headers: {
-          Authorization: apiKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          coordinates: [
-            [srcLng, srcLat],
-            [dstLng, dstLat]
-          ],
-          instructions: true
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-        const route = data.features[0].geometry.coordinates;
-        coords = route.map(([lng, lat]) => [lat, lng]);
-        animationIndex = 0;
-
-        if (polyline) map.removeLayer(polyline);
-        polyline = L.polyline(coords, { color: 'blue', weight: 5 }).addTo(map);
-        map.fitBounds(polyline.getBounds());
-
-        if (deliveryMarker) {
-          deliveryMarker.setLatLng(coords[0]);
-        } else {
-          deliveryMarker = L.marker(coords[0], { icon: deliveryIcon }).addTo(map);
-        }
-
-        moveMarker();
-
-        // 📝 Turn-by-turn directions
-        const instructions = data.features[0].properties.segments[0].steps;
-        instructions.forEach(step => {
-          const li = document.createElement("li");
-          li.innerHTML = step.instruction;
-          stepsList.appendChild(li);
-        });
-      })
-      .catch(err => {
-        alert("Routing failed. Check input or API quota.");
-        console.error(err);
-      });
-    }
-  </script>
+    index = 0;
+    if (highlightLine) map.removeLayer(highlightLine);
+    highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
+    animateMarker();
+  })
+  .catch(err => alert("Routing error: " + err.message));
+}
+</script>
 </body>
 </html>
