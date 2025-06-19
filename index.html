@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Moving Route (Firebase + Location Name)</title>
+  <title>Live Routing - India Only</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
@@ -22,13 +22,11 @@
 
 <div id="map"></div>
 
-<!-- Leaflet + Firebase -->
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-  // 🔐 Firebase Config
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
     authDomain: "myindiamapamritkal.firebaseapp.com",
@@ -41,19 +39,35 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  const map = L.map('map').setView([23.03, 72.58], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  const map = L.map('map', {
+    center: [22.9734, 78.6569],
+    zoom: 5,
+    minZoom: 5,
+    maxZoom: 18
+  });
 
-  const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c"; // ORS demo API key
+  const indiaBounds = [
+    [6.5, 67],
+    [37.1, 97.5]
+  ];
+  map.setMaxBounds(indiaBounds);
+  map.on('drag', () => map.panInsideBounds(indiaBounds, { animate: false }));
 
-  let userMarker = null;
-  let destMarker = null;
-  let routeLine = null;
-  let destinationCoords = null;
-  let watchId = null;
-  let userId = null;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+  }).addTo(map);
 
-  // 🧭 Convert location name to lat/lng
+  const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
+  let userMarker = null, destMarker = null, routeLine = null;
+  let destinationCoords = null, userId = null;
+
+  const mashalIcon = L.icon({
+    iconUrl: 'https://media.giphy.com/media/fhAwk4DnqNgw8/giphy.gif',
+    iconSize: [64, 64],
+    iconAnchor: [32, 64],
+    popupAnchor: [0, -60]
+  });
+
   async function geocodeLocation(name) {
     const url = `https://api.openrouteservice.org/geocode/search?api_key=${orsKey}&text=${encodeURIComponent(name)}`;
     const res = await fetch(url);
@@ -66,47 +80,33 @@
     }
   }
 
-  // 🗺️ Draw route from current to destination
   async function drawRoute(from, to) {
     const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
     const res = await fetch(url);
     const json = await res.json();
     const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-
     if (routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords, { color: 'blue' }).addTo(map);
     map.fitBounds(routeLine.getBounds());
   }
 
-  // 📍 Start live GPS tracking + route updates
   async function startLiveTracking() {
     const name = document.getElementById("username").value;
     const dest = document.getElementById("destination").value;
-
-    if (!name || !dest) {
-      alert("Please enter your name and destination.");
-      return;
-    }
-
+    if (!name || !dest) return alert("Please enter name and destination.");
     userId = "user_" + name.replace(/\s+/g, "_").toLowerCase();
-
     try {
       destinationCoords = await geocodeLocation(dest);
       if (destMarker) map.removeLayer(destMarker);
       destMarker = L.marker([destinationCoords.lat, destinationCoords.lng]).addTo(map)
         .bindPopup("Destination: " + dest).openPopup();
     } catch (e) {
-      alert("Failed to geocode destination");
-      return;
+      return alert("Geocode failed.");
     }
 
-    // Start watching position every second
     if ("geolocation" in navigator) {
-      watchId = navigator.geolocation.watchPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-
-        // Save live position to Firebase
+      navigator.geolocation.watchPosition(pos => {
+        const { latitude: lat, longitude: lng } = pos.coords;
         db.ref("liveUsers/" + userId).set({
           name,
           lat,
@@ -116,29 +116,22 @@
           toLng: destinationCoords.lng,
           timestamp: Date.now()
         });
-
         if (!userMarker) {
-          userMarker = L.marker([lat, lng]).addTo(map).bindPopup("You").openPopup();
+          userMarker = L.marker([lat, lng], { icon: mashalIcon }).addTo(map).bindPopup("🔥 You").openPopup();
         } else {
           userMarker.setLatLng([lat, lng]);
         }
-
-        // Update route to destination
         drawRoute({ lat, lng }, destinationCoords);
-
-      }, err => {
-        alert("GPS error: " + err.message);
-      }, {
+      }, err => alert("GPS error: " + err.message), {
         enableHighAccuracy: true,
         maximumAge: 1000,
         timeout: 5000
       });
     } else {
-      alert("Geolocation not supported in your browser.");
+      alert("Geolocation not supported.");
     }
   }
 
-  // Optional: Show other users live (demo)
   db.ref("liveUsers").on("value", snap => {
     const users = snap.val() || {};
     for (const id in users) {
