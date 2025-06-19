@@ -1,17 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Delivery with Destination</title>
+  <title>Delivery Ahmedabad → Gandhinagar</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-  <style>
-    #map { height: 100vh; width: 100%; margin: 0; padding: 0; }
-    body { margin: 0; }
-  </style>
+  <style> #map { height: 100vh; width: 100%; margin: 0; } body { margin: 0; } </style>
 </head>
 <body>
-
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
@@ -19,7 +15,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-  // 🔐 Firebase Config (your project)
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
     authDomain: "myindiamapamritkal.firebaseapp.com",
@@ -32,23 +27,25 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  // 🌍 Map Setup
-  const map = L.map('map').setView([28.6139, 77.2090], 13);
+  const map = L.map('map').setView([23.1, 72.6], 11); // Center between Ahmedabad and Gandhinagar
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
   const deliveryIcon = L.icon({
     iconUrl: 'https://cdn-icons-png.flaticon.com/512/1046/1046857.png',
-    iconSize: [40,40], iconAnchor: [20,40]
+    iconSize: [40, 40],
+    iconAnchor: [20, 40]
   });
+
   const pinIcon = L.icon({
     iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-    iconSize: [32,32], iconAnchor: [16,32]
+    iconSize: [32, 32],
+    iconAnchor: [16, 32]
   });
 
   const agentMarkers = {}, deliveryMarkers = {}, agentRoutes = {};
 
   async function drawRoute(from, to, agentId) {
-    const apiKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
+    const apiKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c"; // OpenRouteService
     const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${from[1]},${from[0]}&end=${to[1]},${to[0]}`;
     try {
       const res = await fetch(url);
