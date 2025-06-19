@@ -56,49 +56,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-<script>
-  // Define your custom route as array of [lat, lng] points
-  const customRoute = [
-    [23.0225, 72.5714],  // Ahmedabad (Ambawadi)
-    [23.0450, 72.6000],
-    [23.0800, 72.6100],
-    [23.1500, 72.6300],
-    [23.2156, 72.6369]   // Gandhinagar
-  ];
-
-  // Add the path to map
-  const routeLine = L.polyline(customRoute, {
-    color: 'blue',
-    weight: 5
-  }).addTo(map);
-
-  // Adjust view to fit the route
-  map.fitBounds(routeLine.getBounds());
-
-  // Custom icon (mashal)
-  const mashalIcon = L.icon({
-    conUrl: 'https://www.silvertouch.com/mailer/fire-masal.png',
-    iconSize: [40, 40],
-    iconAnchor: [40, 40],
-    popupAnchor: [0, -60]
-  });
-
-  // Add animated marker at first point
-  let movingMarker = L.marker(customRoute[0], { icon: mashalIcon }).addTo(map);
-
-  let i = 0;
-  function animateMarker() {
-    if (i < customRoute.length) {
-      movingMarker.setLatLng(customRoute[i]);
-      i++;
-    } else {
-      clearInterval(animation); // stop at end
-    }
-  }
-
-  const animation = setInterval(animateMarker, 1000); // move every 1 sec
-</script>
-
   <!-- Your Script -->
   <script>
     const firebaseConfig = {
