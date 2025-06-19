@@ -1,50 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>India Live Tracker (Login Required)</title>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; }
-    #map { height: 90vh; width: 100%; display: none; }
-    #form, #loginDiv, #logoutDiv { padding: 10px; background: #f9f9f9; }
-    #loginDiv { text-align: center; margin-top: 50px; }
-    input, button { margin: 5px; padding: 8px; }
-  </style>
-</head>
-<body>
-
-<div id="loginDiv">
-  <h2>Login to Track</h2>
-  <button onclick="googleLogin()">Login with Google</button>
-  <div>
-    <input id="phone" placeholder="+91..." />
-    <div id="recaptcha-container"></div>
-    <button onclick="phoneLogin()">Send OTP</button>
-    <input id="otp" placeholder="Enter OTP" style="display:none;" />
-    <button onclick="verifyOTP()" style="display:none;" id="verifyBtn">Verify OTP</button>
-  </div>
-</div>
-
-<div id="logoutDiv" style="display:none;">
-  <span id="userInfo"></span>
-  <button onclick="logout()">Logout</button>
-</div>
-
-<div id="form" style="display:none;">
-  <input id="destination" placeholder="Destination (e.g., Gandhinagar)" />
-  <button onclick="startLiveTracking()">Start Live Tracking</button>
-</div>
-
-<div id="map"></div>
-
-<!-- Dependencies -->
-<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
@@ -59,13 +12,13 @@
   const auth = firebase.auth();
   const db = firebase.database();
 
-  let map, userId, userName, userPhone = "", userMarker = null, destMarker = null, routeLine = null;
+  let map, userId, userName = "", userPhone = "", userMarker = null, destMarker = null, routeLine = null;
   let destinationCoords = null;
 
   const mashalIcon = L.icon({
     iconUrl: 'https://www.silvertouch.com/mailer/fire-masal.png',
-    iconSize: [64, 64],
-    iconAnchor: [32, 64],
+    iconSize: [40, 40],
+    iconAnchor: [40, 40],
     popupAnchor: [0, -60]
   });
 
@@ -74,6 +27,11 @@
       userId = user.uid;
       userName = user.displayName || user.phoneNumber || "User";
       userPhone = user.phoneNumber || "";
+      if (user.displayName === null && !userNamePrompted) {
+        const namePrompt = prompt("Enter your name:");
+        if (namePrompt) userName = namePrompt;
+      }
+
       document.getElementById("loginDiv").style.display = "none";
       document.getElementById("form").style.display = "block";
       document.getElementById("logoutDiv").style.display = "block";
@@ -102,7 +60,12 @@
 
   function verifyOTP() {
     const otp = document.getElementById("otp").value;
-    window.confirmationResult.confirm(otp).catch(alert);
+    window.confirmationResult.confirm(otp).then(result => {
+      const name = prompt("Enter your name:");
+      if (name) {
+        userName = name;
+      }
+    }).catch(alert);
   }
 
   function logout() {
@@ -123,12 +86,11 @@
       maxZoom: 19
     }).addTo(map);
 
-    // 🚨 Watch live users and auto-remove expired ones
     db.ref("liveUsers").on("value", snap => {
       const users = snap.val() || {};
       const now = Date.now();
 
-      // Remove old markers
+      // Remove all old markers
       map.eachLayer(layer => {
         if (layer instanceof L.Marker && layer !== userMarker && layer !== destMarker) {
           map.removeLayer(layer);
@@ -140,11 +102,11 @@
         const age = (now - u.timestamp) / 1000;
 
         if (age > 60) {
-          db.ref("liveUsers/" + id).remove(); // 💥 Remove expired session
+          db.ref("liveUsers/" + id).remove();
         } else if (id !== userId) {
-          L.marker([u.lat, u.lng], { icon: mashalIcon })
+          const marker = L.marker([u.lat, u.lng], { icon: mashalIcon })
             .addTo(map)
-            .bindPopup(`${u.name || "User"}<br>${u.phone || ""}<br>${u.destination}`);
+            .bindPopup(`${u.name || "User"}<br>${u.destination}`);
         }
       }
     });
@@ -191,7 +153,6 @@
         const { latitude: lat, longitude: lng } = pos.coords;
         db.ref("liveUsers/" + userId).set({
           name: userName,
-          phone: userPhone,
           lat,
           lng,
           destination: dest,
@@ -199,18 +160,20 @@
           toLng: destinationCoords.lng,
           timestamp: Date.now()
         });
-        const popupContent = `
-          <strong>${userName}</strong><br>
-          ${userPhone ? userPhone + "<br>" : ""}
-          ${auth.currentUser.photoURL ? `<img src="${auth.currentUser.photoURL}" width="60" height="60" style="border-radius:50%;">` : ""}
-        `;
-        
+
+        // Show custom popup
+        let popupContent = `<strong>${userName}</strong><br>`;
+        if (auth.currentUser.photoURL) {
+          popupContent += `<img src="${auth.currentUser.photoURL}" width="60" height="60" style="border-radius:50%;">`;
+        }
+
         if (!userMarker) {
           userMarker = L.marker([lat, lng], { icon: mashalIcon }).addTo(map).bindPopup(popupContent).openPopup();
         } else {
           userMarker.setLatLng([lat, lng]);
           userMarker.setPopupContent(popupContent);
         }
+
         drawRoute({ lat, lng }, destinationCoords);
       }, err => alert("GPS error: " + err.message), {
         enableHighAccuracy: true,
@@ -222,7 +185,3 @@
     }
   }
 </script>
-
-
-</body>
-</html>
