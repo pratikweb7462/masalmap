@@ -1,119 +1,66 @@
-
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Swiggy-style Delivery Route</title>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Routing Demo</title>
+  <meta charset="utf-8" />
+  <style>
+    #map { height: 500px; width: 100%; }
+    body { font-family: sans-serif; padding: 20px; }
+  </style>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
-    #map { height: 100%; width: 70%; float: left; }
-    #panel {
-      width: 30%; float: left; padding: 1rem;
-      overflow-y: auto; height: 100%; background: #f7f7f7;
-      border-left: 1px solid #ccc;
-    }
-    select, button { width: 100%; padding: 10px; margin-bottom: 10px; }
-    ol { padding-left: 20px; }
-  </style>
 </head>
 <body>
+
+<h2>🚗 Route Between Two Points</h2>
+
+<button onclick="drawRoute()">Draw Route</button>
 <div id="map"></div>
-<div id="panel">
-  <h3>📍 Delivery Route</h3>
-  <label>Source City:</label>
-  <select id="source">
-    <option value="23.030357,72.517845">Ahmedabad</option>
-    <option value="28.6139,77.2090">Delhi</option>
-    <option value="19.0760,72.8777">Mumbai</option>
-  </select>
-  <label>Destination City:</label>
-  <select id="destination">
-    <option value="23.2231,72.6509">Gandhinagar</option>
-    <option value="28.4595,77.0266">Gurgaon</option>
-    <option value="18.5204,73.8567">Pune</option>
-  </select>
-  <button onclick="drawRoute()">Start Delivery</button>
-  <h4>📜 Directions</h4>
-  <ol id="steps"></ol>
-</div>
 
 <script>
-const map = L.map('map').setView([22.9734, 78.6569], 5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors'
-}).addTo(map);
+  const map = L.map('map').setView([28.6139, 77.2090], 6); // India center
 
-const deliveryIcon = L.icon({
-  iconUrl: "https://www.silvertouch.com/mailer/fire-masal.png",
-  iconSize: [40, 40], iconAnchor: [20, 40]
-});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18
+  }).addTo(map);
 
-let marker, polyline, coords = [], index = 0;
-let highlightLine;
+  let routeLine;
 
-function animateMarker() {
-  if (!marker || index >= coords.length) {
-    index = 0;
-    marker.setLatLng(coords[0]);
-    if (highlightLine) map.removeLayer(highlightLine);
-    highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
+  async function drawRoute() {
+    const start = [77.2090, 28.6139]; // Delhi [lng, lat]
+    const end = [72.8777, 19.0760];   // Mumbai [lng, lat]
+
+    const coords = [start, end];
+    const apiKey = '5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6';
+    const proxy = 'https://corsproxy.io/?';
+    const endpoint = 'https://api.openrouteservice.org/v2/directions/driving-car';
+    const url = proxy + encodeURIComponent(endpoint);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ coordinates: coords })
+      });
+
+      const data = await response.json();
+
+      const routeCoords = data.features[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+
+      if (routeLine) map.removeLayer(routeLine);
+
+      routeLine = L.polyline(routeCoords, { color: 'blue', weight: 4 }).addTo(map);
+      map.fitBounds(routeLine.getBounds());
+
+    } catch (error) {
+      console.error("Routing error:", error);
+      alert("❌ Routing failed. Check your API key or internet connection.");
+    }
   }
-  marker.setLatLng(coords[index]);
-  highlightLine.addLatLng(coords[index]);
-  index++;
-  if (index < coords.length) setTimeout(animateMarker, 300);
-}
-
-function drawRoute() {
-  const src = document.getElementById("source").value.split(",").map(Number);
-  const dst = document.getElementById("destination").value.split(",").map(Number);
-  const stepsList = document.getElementById("steps");
-  stepsList.innerHTML = "";
-
-  fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
-    method: "POST",
-    headers: {
-      'Authorization': "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c",
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ coordinates: [[src[1], src[0]], [dst[1], dst[0]]] })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (!data || !data.features || !data.features[0]) {
-      alert("❌ No route found. Try different cities.");
-      return;
-    }
-
-    coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-    if (polyline) map.removeLayer(polyline);
-    polyline = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
-    map.fitBounds(polyline.getBounds());
-
-    if (!marker) {
-      marker = L.marker(coords[0], { icon: deliveryIcon }).addTo(map);
-    }
-
-    const steps = data.features[0].properties.segments[0].steps;
-    steps.forEach(step => {
-      const li = document.createElement("li");
-      li.textContent = step.instruction;
-      stepsList.appendChild(li);
-    });
-
-    index = 0;
-    if (highlightLine) map.removeLayer(highlightLine);
-    highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
-    animateMarker();
-  })
-  .catch(err => {
-    console.error("Routing error:", err);
-    alert("🚫 Routing failed. Check your API key or network connection.");
-  });
-}
 </script>
+
 </body>
 </html>
