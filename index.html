@@ -1,71 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Swiggy Style Route Demo</title>
+  <title>Animated Delivery Route</title>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
+    body, html { margin: 0; padding: 0; height: 100%; }
+    #map { height: 100%; width: 75%; float: left; }
+    #panel {
+      width: 25%;
+      float: left;
+      padding: 1rem;
+      overflow-y: auto;
+      height: 100%;
+      background: #f9f9f9;
+      border-left: 1px solid #ccc;
+    }
+    input, button {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+    }
+    ol {
+      padding-left: 20px;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="panel">
+    <h3>📍 Route Planner</h3>
+    <input id="src" placeholder="Source (lat,lng)" value="23.0225,72.5714">
+    <input id="dst" placeholder="Destination (lat,lng)" value="23.2156,72.6369">
+    <button onclick="startRoute()">Draw Route</button>
+    <h4>📜 Steps</h4>
+    <ol id="steps"></ol>
+  </div>
 
   <script>
-    // 🗺️ Coordinates
-    const source = [23.0225, 72.5714];       // Restaurant (Ahmedabad)
-    const destination = [23.2156, 72.6369];  // Customer (Gandhinagar)
-
-    const iconUrl = "https://www.silvertouch.com/mailer/fire-masal.png";
-    const icon = L.icon({
-      iconUrl,
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
-      popupAnchor: [0, -40]
-    });
-
-    // 🗺️ Init Map
-    const map = L.map("map").setView(source, 11);
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors"
+    const map = L.map('map').setView([22.9734, 78.6569], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Markers
-    const srcMarker = L.marker(source, { icon }).addTo(map).bindPopup("Restaurant").openPopup();
-    const dstMarker = L.marker(destination, { icon }).addTo(map).bindPopup("Customer");
-
-    // 🧭 Draw Route using OpenRouteService
-    const apiKey = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6"; // Your ORS key
-    const url = "https://api.openrouteservice.org/v2/directions/foot-walking";
-
-    fetch(url, {
-      method: "POST",
-      headers: {
-        'Authorization': apiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        coordinates: [
-          [source[1], source[0]],
-          [destination[1], destination[0]]
-        ]
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-      L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
-    })
-    .catch(err => {
-      console.error("Routing error:", err);
-      alert("Failed to load route.");
+    const iconUrl = "https://www.silvertouch.com/mailer/fire-masal.png";
+    const deliveryIcon = L.icon({
+      iconUrl,
+      iconSize: [40, 40],
+      iconAnchor: [20, 40]
     });
+
+    let deliveryMarker, polyline, animationIndex = 0, coords = [];
+
+    function moveMarker() {
+      if (animationIndex >= coords.length) return;
+      deliveryMarker.setLatLng(coords[animationIndex]);
+      animationIndex++;
+      setTimeout(moveMarker, 500); // Adjust speed here
+    }
+
+    function startRoute() {
+      const srcInput = document.getElementById("src").value.trim();
+      const dstInput = document.getElementById("dst").value.trim();
+      const stepsList = document.getElementById("steps");
+      stepsList.innerHTML = "";
+
+      const [srcLat, srcLng] = srcInput.split(",").map(Number);
+      const [dstLat, dstLng] = dstInput.split(",").map(Number);
+
+      const apiKey = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6";
+      fetch("https://api.openrouteservice.org/v2/directions/foot-walking", {
+        method: "POST",
+        headers: {
+          Authorization: apiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          coordinates: [
+            [srcLng, srcLat],
+            [dstLng, dstLat]
+          ],
+          instructions: true
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        const route = data.features[0].geometry.coordinates;
+        coords = route.map(([lng, lat]) => [lat, lng]);
+        animationIndex = 0;
+
+        if (polyline) map.removeLayer(polyline);
+        polyline = L.polyline(coords, { color: 'blue', weight: 5 }).addTo(map);
+        map.fitBounds(polyline.getBounds());
+
+        if (deliveryMarker) {
+          deliveryMarker.setLatLng(coords[0]);
+        } else {
+          deliveryMarker = L.marker(coords[0], { icon: deliveryIcon }).addTo(map);
+        }
+
+        moveMarker();
+
+        // 📝 Turn-by-turn directions
+        const instructions = data.features[0].properties.segments[0].steps;
+        instructions.forEach(step => {
+          const li = document.createElement("li");
+          li.innerHTML = step.instruction;
+          stepsList.appendChild(li);
+        });
+      })
+      .catch(err => {
+        alert("Routing failed. Check input or API quota.");
+        console.error(err);
+      });
+    }
   </script>
 </body>
 </html>
