@@ -199,10 +199,17 @@
           toLng: destinationCoords.lng,
           timestamp: Date.now()
         });
+        const popupContent = `
+          <strong>${userName}</strong><br>
+          ${userPhone ? userPhone + "<br>" : ""}
+          ${auth.currentUser.photoURL ? `<img src="${auth.currentUser.photoURL}" width="60" height="60" style="border-radius:50%;">` : ""}
+        `;
+        
         if (!userMarker) {
-          userMarker = L.marker([lat, lng], { icon: mashalIcon }).addTo(map).bindPopup("🔥 You").openPopup();
+          userMarker = L.marker([lat, lng], { icon: mashalIcon }).addTo(map).bindPopup(popupContent).openPopup();
         } else {
           userMarker.setLatLng([lat, lng]);
+          userMarker.setPopupContent(popupContent);
         }
         drawRoute({ lat, lng }, destinationCoords);
       }, err => alert("GPS error: " + err.message), {
