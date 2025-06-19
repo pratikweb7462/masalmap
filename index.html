@@ -46,7 +46,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-  // 🔐 Your Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
     authDomain: "myindiamapamritkal.firebaseapp.com",
@@ -64,9 +63,9 @@
   let destinationCoords = null;
 
   const mashalIcon = L.icon({
-    iconUrl: 'https://www.silvertouch.com/mailer/fire-masal.png',
-    iconSize: [40, 40],
-    iconAnchor: [40, 40],
+    iconUrl: 'https://media.giphy.com/media/fhAwk4DnqNgw8/giphy.gif',
+    iconSize: [64, 64],
+    iconAnchor: [32, 64],
     popupAnchor: [0, -60]
   });
 
@@ -124,11 +123,25 @@
       maxZoom: 19
     }).addTo(map);
 
+    // 🚨 Watch live users and auto-remove expired ones
     db.ref("liveUsers").on("value", snap => {
       const users = snap.val() || {};
+      const now = Date.now();
+
+      // Remove old markers
+      map.eachLayer(layer => {
+        if (layer instanceof L.Marker && layer !== userMarker && layer !== destMarker) {
+          map.removeLayer(layer);
+        }
+      });
+
       for (const id in users) {
         const u = users[id];
-        if (id !== userId) {
+        const age = (now - u.timestamp) / 1000;
+
+        if (age > 60) {
+          db.ref("liveUsers/" + id).remove(); // 💥 Remove expired session
+        } else if (id !== userId) {
           L.marker([u.lat, u.lng], { icon: mashalIcon })
             .addTo(map)
             .bindPopup(`${u.name || "User"}<br>${u.phone || ""}<br>${u.destination}`);
@@ -202,6 +215,7 @@
     }
   }
 </script>
+
 
 </body>
 </html>
