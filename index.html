@@ -1,17 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>India Live Tracker (Free + Accurate)</title>
+  <title>Swiggy Style Route Demo</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  
+
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-database-compat.js"></script>
 
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
@@ -21,107 +17,55 @@
   <div id="map"></div>
 
   <script>
-    // ✅ Firebase Config
-    const firebaseConfig = {
-      apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
-      authDomain: "myindiamapamritkal.firebaseapp.com",
-      databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
-      projectId: "myindiamapamritkal",
-      storageBucket: "myindiamapamritkal.firebasestorage.app",
-      messagingSenderId: "830924864737",
-      appId: "1:830924864737:web:7a096f506d004e19358ba0"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-
-    const map = L.map('map').setView([22.9734, 78.6569], 5); // India center
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    // 🗺️ Coordinates
+    const source = [23.0225, 72.5714];       // Restaurant (Ahmedabad)
+    const destination = [23.2156, 72.6369];  // Customer (Gandhinagar)
 
     const iconUrl = "https://www.silvertouch.com/mailer/fire-masal.png";
-    const userId = "user_" + Math.floor(Math.random() * 10000);
-    const myIcon = L.icon({
+    const icon = L.icon({
       iconUrl,
       iconSize: [40, 40],
       iconAnchor: [20, 40],
       popupAnchor: [0, -40]
     });
 
-    let myMarker;
-    const userMarkers = {};
-    let routeLine;
+    // 🗺️ Init Map
+    const map = L.map("map").setView(source, 11);
 
-    function updateLocation() {
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(pos => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
 
-          if (!myMarker) {
-            myMarker = L.marker([lat, lng], { icon: myIcon }).addTo(map).bindPopup("You");
-            map.setView([lat, lng], 15);
-          } else {
-            myMarker.setLatLng([lat, lng]);
-          }
+    // Markers
+    const srcMarker = L.marker(source, { icon }).addTo(map).bindPopup("Restaurant").openPopup();
+    const dstMarker = L.marker(destination, { icon }).addTo(map).bindPopup("Customer");
 
-          db.ref("locations/" + userId).set({
-            lat, lng, name: "Fire User"
-          });
-        }, err => {
-          alert("GPS Error: " + err.message);
-        }, { enableHighAccuracy: true });
-      } else {
-        alert("Geolocation not supported");
-      }
-    }
+    // 🧭 Draw Route using OpenRouteService
+    const apiKey = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6"; // Your ORS key
+    const url = "https://api.openrouteservice.org/v2/directions/foot-walking";
 
-    function trackUsers() {
-      db.ref("locations").on("value", snap => {
-        const data = snap.val();
-        for (let id in data) {
-          if (id === userId) continue;
-          const { lat, lng, name } = data[id];
-
-          if (!userMarkers[id]) {
-            const marker = L.marker([lat, lng], { icon: myIcon }).addTo(map).bindPopup(name);
-            marker.on('click', () => drawRoute(lat, lng));
-            userMarkers[id] = marker;
-          } else {
-            userMarkers[id].setLatLng([lat, lng]);
-          }
-        }
-      });
-    }
-
-    async function drawRoute(destLat, destLng) {
-      if (!myMarker) return;
-
-      const [srcLat, srcLng] = myMarker.getLatLng();
-      const url = "https://api.openrouteservice.org/v2/directions/foot-walking";
-      const apiKey = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6";
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          'Authorization': apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          coordinates: [[srcLng, srcLat], [destLng, destLat]]
-        })
-      });
-
-      const json = await res.json();
-      const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-
-      if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.polyline(coords, { color: 'red', weight: 5 }).addTo(map);
-    }
-
-    updateLocation();
-    trackUsers();
+    fetch(url, {
+      method: "POST",
+      headers: {
+        'Authorization': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        coordinates: [
+          [source[1], source[0]],
+          [destination[1], destination[0]]
+        ]
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+      L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
+    })
+    .catch(err => {
+      console.error("Routing error:", err);
+      alert("Failed to load route.");
+    });
   </script>
 </body>
 </html>
