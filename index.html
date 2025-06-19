@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>India Live Map - OTP + Routing</title>
+  <title>India Live Map - Walking Route Only</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -60,7 +60,7 @@
 <script src="https://www.gstatic.com/firebasejs/11.9.1/firebase-database-compat.js"></script>
 
 <script>
-  const ORS_API_KEY = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6";
+  const ORS_API_KEY = "5b3ce3597851110001cf6248c9d85902f070459d880c6a22a6e467d6"; // walking-only
 
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
@@ -219,7 +219,6 @@
         if (polylines[userId]) map.removeLayer(polylines[userId]);
         polylines[userId] = L.polyline(path, { color: "blue" }).addTo(map);
 
-        // Populate dropdown
         if (currentUser && userId !== currentUser.uid) {
           const option = document.createElement("option");
           option.value = userId;
@@ -232,12 +231,14 @@
 
   async function drawRouteToSelectedUser() {
     const selectedId = document.getElementById("userSelect").value;
+    const mode = "foot-walking"; // walking-only
+
     if (!selectedId || !currentUser || !markers[currentUser.uid] || !markers[selectedId]) return;
 
     const from = markers[currentUser.uid].getLatLng();
     const to = markers[selectedId].getLatLng();
 
-    const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
+    const url = `https://api.openrouteservice.org/v2/directions/${mode}?api_key=${ORS_API_KEY}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
 
     try {
       const response = await fetch(url);
@@ -246,11 +247,12 @@
       const latLngs = coords.map(([lng, lat]) => [lat, lng]);
 
       if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.polyline(latLngs, { color: "red", weight: 4 }).addTo(map);
+      routeLine = L.polyline(latLngs, { color: "green", weight: 4 }).addTo(map);
       map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+
     } catch (err) {
       console.error("Route API error:", err);
-      alert("Unable to fetch route.");
+      alert("Unable to fetch walking route.");
     }
   }
 
