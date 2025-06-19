@@ -1,3 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>India Live Tracker (Login Required)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { height: 90vh; width: 100%; display: none; }
+    #form, #loginDiv, #logoutDiv { padding: 10px; background: #f9f9f9; }
+    #loginDiv { text-align: center; margin-top: 50px; }
+    input, button { margin: 5px; padding: 8px; }
+  </style>
+</head>
+<body>
+
+<div id="loginDiv">
+  <h2>Login to Track</h2>
+  <button onclick="googleLogin()">Login with Google</button>
+  <div>
+    <input id="phone" placeholder="+91..." />
+    <div id="recaptcha-container"></div>
+    <button onclick="phoneLogin()">Send OTP</button>
+    <input id="otp" placeholder="Enter OTP" style="display:none;" />
+    <button onclick="verifyOTP()" style="display:none;" id="verifyBtn">Verify OTP</button>
+  </div>
+</div>
+
+<div id="logoutDiv" style="display:none;">
+  <span id="userInfo"></span>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<div id="form" style="display:none;">
+  <input id="destination" placeholder="Destination (e.g., Gandhinagar)" />
+  <button onclick="startLiveTracking()">Start Live Tracking</button>
+</div>
+
+<div id="map"></div>
+
+<!-- Dependencies -->
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
@@ -185,3 +232,8 @@
     }
   }
 </script>
+
+
+</body>
+</html>
+
