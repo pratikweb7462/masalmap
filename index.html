@@ -1,93 +1,153 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Route from A to B</title>
+  <title>Live Moving Route (Firebase + Location Name)</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <style>
     body, html { margin: 0; padding: 0; }
     #map { height: 90vh; width: 100%; }
-    #controls {
-      padding: 10px;
-      background: #f0f0f0;
-    }
-    input { margin: 4px; padding: 5px; }
-    button { padding: 6px 10px; }
+    #form { padding: 10px; background: #f0f0f0; }
+    input, button { margin: 4px; padding: 6px; }
   </style>
 </head>
 <body>
 
-<div id="controls">
-  <input id="startLat" type="text" placeholder="Start Latitude" />
-  <input id="startLng" type="text" placeholder="Start Longitude" />
-  <input id="endLat" type="text" placeholder="End Latitude" />
-  <input id="endLng" type="text" placeholder="End Longitude" />
-  <button onclick="getRoute()">Draw Route</button>
-  <button onclick="useGPS()">Use My Location</button>
+<div id="form">
+  <input id="username" placeholder="Your Name" />
+  <input id="destination" placeholder="Destination (e.g., Gandhinagar)" />
+  <button onclick="startLiveTracking()">Start Live Tracking</button>
 </div>
 
 <div id="map"></div>
 
-<!-- Leaflet -->
+<!-- Leaflet + Firebase -->
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
+  // 🔐 Firebase Config
+  const firebaseConfig = {
+    apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
+    authDomain: "myindiamapamritkal.firebaseapp.com",
+    databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
+    projectId: "myindiamapamritkal",
+    storageBucket: "myindiamapamritkal.firebasestorage.app",
+    messagingSenderId: "830924864737",
+    appId: "1:830924864737:web:7a096f506d004e19358ba0"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
   const map = L.map('map').setView([23.03, 72.58], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19
-  }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+  const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c"; // ORS demo API key
+
+  let userMarker = null;
+  let destMarker = null;
   let routeLine = null;
-  let startMarker = null, endMarker = null;
+  let destinationCoords = null;
+  let watchId = null;
+  let userId = null;
 
-  async function getRoute() {
-    const startLat = parseFloat(document.getElementById("startLat").value);
-    const startLng = parseFloat(document.getElementById("startLng").value);
-    const endLat = parseFloat(document.getElementById("endLat").value);
-    const endLng = parseFloat(document.getElementById("endLng").value);
+  // 🧭 Convert location name to lat/lng
+  async function geocodeLocation(name) {
+    const url = `https://api.openrouteservice.org/geocode/search?api_key=${orsKey}&text=${encodeURIComponent(name)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.features && data.features.length) {
+      const [lng, lat] = data.features[0].geometry.coordinates;
+      return { lat, lng };
+    } else {
+      throw new Error("Location not found");
+    }
+  }
 
-    if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
-      alert("Enter valid coordinates.");
+  // 🗺️ Draw route from current to destination
+  async function drawRoute(from, to) {
+    const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords, { color: 'blue' }).addTo(map);
+    map.fitBounds(routeLine.getBounds());
+  }
+
+  // 📍 Start live GPS tracking + route updates
+  async function startLiveTracking() {
+    const name = document.getElementById("username").value;
+    const dest = document.getElementById("destination").value;
+
+    if (!name || !dest) {
+      alert("Please enter your name and destination.");
       return;
     }
 
-    if (startMarker) map.removeLayer(startMarker);
-    if (endMarker) map.removeLayer(endMarker);
-    if (routeLine) map.removeLayer(routeLine);
-
-    startMarker = L.marker([startLat, startLng]).addTo(map).bindPopup("Start").openPopup();
-    endMarker = L.marker([endLat, endLng]).addTo(map).bindPopup("End");
-
-    const apiKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c"; // OpenRouteService public demo key
-    const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${startLng},${startLat}&end=${endLng},${endLat}`;
+    userId = "user_" + name.replace(/\s+/g, "_").toLowerCase();
 
     try {
-      const res = await fetch(url);
-      const json = await res.json();
-      const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-      routeLine = L.polyline(coords, { color: "blue" }).addTo(map);
-      map.fitBounds(routeLine.getBounds());
-    } catch (err) {
-      alert("Error fetching route.");
-      console.error(err);
+      destinationCoords = await geocodeLocation(dest);
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker([destinationCoords.lat, destinationCoords.lng]).addTo(map)
+        .bindPopup("Destination: " + dest).openPopup();
+    } catch (e) {
+      alert("Failed to geocode destination");
+      return;
+    }
+
+    // Start watching position every second
+    if ("geolocation" in navigator) {
+      watchId = navigator.geolocation.watchPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // Save live position to Firebase
+        db.ref("liveUsers/" + userId).set({
+          name,
+          lat,
+          lng,
+          destination: dest,
+          toLat: destinationCoords.lat,
+          toLng: destinationCoords.lng,
+          timestamp: Date.now()
+        });
+
+        if (!userMarker) {
+          userMarker = L.marker([lat, lng]).addTo(map).bindPopup("You").openPopup();
+        } else {
+          userMarker.setLatLng([lat, lng]);
+        }
+
+        // Update route to destination
+        drawRoute({ lat, lng }, destinationCoords);
+
+      }, err => {
+        alert("GPS error: " + err.message);
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000
+      });
+    } else {
+      alert("Geolocation not supported in your browser.");
     }
   }
 
-  function useGPS() {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        document.getElementById("startLat").value = lat.toFixed(6);
-        document.getElementById("startLng").value = lng.toFixed(6);
-      }, err => {
-        alert("GPS error");
-      });
-    } else {
-      alert("GPS not supported.");
+  // Optional: Show other users live (demo)
+  db.ref("liveUsers").on("value", snap => {
+    const users = snap.val() || {};
+    for (const id in users) {
+      if (id !== userId) {
+        const u = users[id];
+        L.marker([u.lat, u.lng]).addTo(map).bindPopup(u.name + " → " + u.destination);
+      }
     }
-  }
+  });
 </script>
 
 </body>
