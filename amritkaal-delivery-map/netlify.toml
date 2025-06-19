@@ -1,2 +1,7 @@
+[build]
+  publish = "amritkaal-delivery-map"
+  functions = "amritkaal-delivery-map/netlify/functions"
+  command = "" # explicitly state no build step
+
 [functions]
-  directory = "netlify/functions"
+  node_bundler = "esbuild"
