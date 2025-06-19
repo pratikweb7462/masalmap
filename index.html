@@ -1,32 +1,52 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Routing - India Only</title>
+  <title>India Live Tracker (Login Required)</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <style>
-    body, html { margin: 0; padding: 0; }
-    #map { height: 90vh; width: 100%; }
-    #form { padding: 10px; background: #f0f0f0; }
-    input, button { margin: 4px; padding: 6px; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { height: 90vh; width: 100%; display: none; }
+    #form, #loginDiv, #logoutDiv { padding: 10px; background: #f9f9f9; }
+    #loginDiv { text-align: center; margin-top: 50px; }
+    input, button { margin: 5px; padding: 8px; }
   </style>
 </head>
 <body>
 
-<div id="form">
-  <input id="username" placeholder="Your Name" />
+<div id="loginDiv">
+  <h2>Login to Track</h2>
+  <button onclick="googleLogin()">Login with Google</button>
+  <div>
+    <input id="phone" placeholder="+91..." />
+    <div id="recaptcha-container"></div>
+    <button onclick="phoneLogin()">Send OTP</button>
+    <input id="otp" placeholder="Enter OTP" style="display:none;" />
+    <button onclick="verifyOTP()" style="display:none;" id="verifyBtn">Verify OTP</button>
+  </div>
+</div>
+
+<div id="logoutDiv" style="display:none;">
+  <span id="userInfo"></span>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<div id="form" style="display:none;">
   <input id="destination" placeholder="Destination (e.g., Gandhinagar)" />
   <button onclick="startLiveTracking()">Start Live Tracking</button>
 </div>
 
 <div id="map"></div>
 
+<!-- Dependencies -->
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
+  // 🔐 Your Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
     authDomain: "myindiamapamritkal.firebaseapp.com",
@@ -37,38 +57,88 @@
     appId: "1:830924864737:web:7a096f506d004e19358ba0"
   };
   firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
   const db = firebase.database();
 
-  const map = L.map('map', {
-    center: [22.9734, 78.6569],
-    zoom: 5,
-    minZoom: 5,
-    maxZoom: 18
-  });
-
-  const indiaBounds = [
-    [6.5, 67],
-    [37.1, 97.5]
-  ];
-  map.setMaxBounds(indiaBounds);
-  map.on('drag', () => map.panInsideBounds(indiaBounds, { animate: false }));
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19
-  }).addTo(map);
-
-  const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
-  let userMarker = null, destMarker = null, routeLine = null;
-  let destinationCoords = null, userId = null;
+  let map, userId, userName, userPhone = "", userMarker = null, destMarker = null, routeLine = null;
+  let destinationCoords = null;
 
   const mashalIcon = L.icon({
-    iconUrl: 'https://www.silvertouch.com/mailer/fire-masal.png',
-    iconSize: [40, 40],
+    iconUrl: 'https://media.giphy.com/media/fhAwk4DnqNgw8/giphy.gif',
+    iconSize: [64, 64],
     iconAnchor: [32, 64],
     popupAnchor: [0, -60]
   });
 
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      userId = user.uid;
+      userName = user.displayName || user.phoneNumber || "User";
+      userPhone = user.phoneNumber || "";
+      document.getElementById("loginDiv").style.display = "none";
+      document.getElementById("form").style.display = "block";
+      document.getElementById("logoutDiv").style.display = "block";
+      document.getElementById("map").style.display = "block";
+      document.getElementById("userInfo").innerText = "Logged in as: " + userName;
+      initMap();
+    }
+  });
+
+  function googleLogin() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(alert);
+  }
+
+  function phoneLogin() {
+    const phone = document.getElementById("phone").value;
+    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+      size: 'invisible'
+    });
+    auth.signInWithPhoneNumber(phone, window.recaptchaVerifier).then(confirmationResult => {
+      window.confirmationResult = confirmationResult;
+      document.getElementById("otp").style.display = "inline";
+      document.getElementById("verifyBtn").style.display = "inline";
+    }).catch(alert);
+  }
+
+  function verifyOTP() {
+    const otp = document.getElementById("otp").value;
+    window.confirmationResult.confirm(otp).catch(alert);
+  }
+
+  function logout() {
+    auth.signOut();
+    location.reload();
+  }
+
+  function initMap() {
+    map = L.map('map', {
+      center: [22.9734, 78.6569],
+      zoom: 5,
+      minZoom: 5,
+      maxZoom: 18,
+      maxBounds: [[6.5, 67], [37.1, 97.5]],
+      maxBoundsViscosity: 1.0
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    db.ref("liveUsers").on("value", snap => {
+      const users = snap.val() || {};
+      for (const id in users) {
+        const u = users[id];
+        if (id !== userId) {
+          L.marker([u.lat, u.lng], { icon: mashalIcon })
+            .addTo(map)
+            .bindPopup(`${u.name || "User"}<br>${u.phone || ""}<br>${u.destination}`);
+        }
+      }
+    });
+  }
+
   async function geocodeLocation(name) {
+    const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
     const url = `https://api.openrouteservice.org/geocode/search?api_key=${orsKey}&text=${encodeURIComponent(name)}`;
     const res = await fetch(url);
     const data = await res.json();
@@ -81,6 +151,7 @@
   }
 
   async function drawRoute(from, to) {
+    const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
     const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`;
     const res = await fetch(url);
     const json = await res.json();
@@ -91,24 +162,23 @@
   }
 
   async function startLiveTracking() {
-    const name = document.getElementById("username").value;
     const dest = document.getElementById("destination").value;
-    if (!name || !dest) return alert("Please enter name and destination.");
-    userId = "user_" + name.replace(/\s+/g, "_").toLowerCase();
+    if (!dest) return alert("Please enter destination.");
     try {
       destinationCoords = await geocodeLocation(dest);
       if (destMarker) map.removeLayer(destMarker);
       destMarker = L.marker([destinationCoords.lat, destinationCoords.lng]).addTo(map)
         .bindPopup("Destination: " + dest).openPopup();
     } catch (e) {
-      return alert("Geocode failed.");
+      return alert("Failed to geocode destination.");
     }
 
     if ("geolocation" in navigator) {
       navigator.geolocation.watchPosition(pos => {
         const { latitude: lat, longitude: lng } = pos.coords;
         db.ref("liveUsers/" + userId).set({
-          name,
+          name: userName,
+          phone: userPhone,
           lat,
           lng,
           destination: dest,
@@ -131,16 +201,6 @@
       alert("Geolocation not supported.");
     }
   }
-
-  db.ref("liveUsers").on("value", snap => {
-    const users = snap.val() || {};
-    for (const id in users) {
-      if (id !== userId) {
-        const u = users[id];
-        L.marker([u.lat, u.lng]).addTo(map).bindPopup(u.name + " → " + u.destination);
-      }
-    }
-  });
 </script>
 
 </body>
