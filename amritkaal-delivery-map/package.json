@@ -1,0 +1,11 @@
+{
+  "name": "amritkaal-delivery-map",
+  "version": "1.0.0",
+  "description": "Swiggy-style delivery map with Netlify functions",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {},
+  "dependencies": {
+    "node-fetch": "^2.6.11"
+  }
+}
