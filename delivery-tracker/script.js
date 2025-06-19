@@ -12,14 +12,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // Initialize Leaflet map
-const map = L.map("map").setView([22.5726, 88.3639], 13);
+const map = L.map("map").setView([23.0238712, 72.5552821], 13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap contributors"
 }).addTo(map);
 
 // Define source and destination coordinates
-const source = [22.5726, 88.3639]; // Kolkata
-const destination = [22.5805, 88.4152]; // Salt Lake
+const source = [23.0238712, 72.5552821];
+const destination = [23.135876, 72.5426026];
 
 let pathCoords = [];
 let deliveryMarker;
