@@ -1,119 +1,104 @@
-
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Swiggy-style Delivery Route</title>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <title>Multi-Delivery Tracker</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
-    #map { height: 100%; width: 70%; float: left; }
-    #panel {
-      width: 30%; float: left; padding: 1rem;
-      overflow-y: auto; height: 100%; background: #f7f7f7;
-      border-left: 1px solid #ccc;
-    }
-    select, button { width: 100%; padding: 10px; margin-bottom: 10px; }
-    ol { padding-left: 20px; }
+    #map { height: 100vh; width: 100%; }
   </style>
 </head>
 <body>
+
 <div id="map"></div>
-<div id="panel">
-  <h3>📍 Delivery Route</h3>
-  <label>Source City:</label>
-  <select id="source">
-    <option value="23.030357,72.517845">Ahmedabad</option>
-    <option value="28.6139,77.2090">Delhi</option>
-    <option value="19.0760,72.8777">Mumbai</option>
-  </select>
-  <label>Destination City:</label>
-  <select id="destination">
-    <option value="23.2231,72.6509">Gandhinagar</option>
-    <option value="28.4595,77.0266">Gurgaon</option>
-    <option value="18.5204,73.8567">Pune</option>
-  </select>
-  <button onclick="drawRoute()">Start Delivery</button>
-  <h4>📜 Directions</h4>
-  <ol id="steps"></ol>
-</div>
+
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
-const map = L.map('map').setView([22.9734, 78.6569], 5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors'
-}).addTo(map);
+  // Firebase Config
+  const firebaseConfig = {
+    apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
+    authDomain: "myindiamapamritkal.firebaseapp.com",
+    databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
+    projectId: "myindiamapamritkal",
+    storageBucket: "myindiamapamritkal.firebasestorage.app",
+    messagingSenderId: "830924864737",
+    appId: "1:830924864737:web:7a096f506d004e19358ba0"
+  };
 
-const deliveryIcon = L.icon({
-  iconUrl: "https://www.silvertouch.com/mailer/fire-masal.png",
-  iconSize: [40, 40], iconAnchor: [20, 40]
-});
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
 
-let marker, polyline, coords = [], index = 0;
-let highlightLine;
+  const map = L.map('map').setView([28.6139, 77.2090], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+  }).addTo(map);
 
-function animateMarker() {
-  if (!marker || index >= coords.length) {
-    index = 0;
-    marker.setLatLng(coords[0]);
-    if (highlightLine) map.removeLayer(highlightLine);
-    highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
-  }
-  marker.setLatLng(coords[index]);
-  highlightLine.addLatLng(coords[index]);
-  index++;
-  if (index < coords.length) setTimeout(animateMarker, 300);
-}
+  // Warehouse location
+  const warehouse = [28.6100, 77.2000];
+  L.marker(warehouse).bindPopup("Warehouse").addTo(map);
 
-function drawRoute() {
-  const src = document.getElementById("source").value.split(",").map(Number);
-  const dst = document.getElementById("destination").value.split(",").map(Number);
-  const stepsList = document.getElementById("steps");
-  stepsList.innerHTML = "";
+  // Marker & Route storage
+  const agentMarkers = {};
+  const agentRoutes = {};
 
-  fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
-    method: "POST",
-    headers: {
-      'Authorization': "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c",
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ coordinates: [[src[1], src[0]], [dst[1], dst[0]]] })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (!data || !data.features || !data.features[0]) {
-      alert("❌ No route found. Try different cities.");
-      return;
-    }
-
-    coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-    if (polyline) map.removeLayer(polyline);
-    polyline = L.polyline(coords, { color: 'blue', weight: 4 }).addTo(map);
-    map.fitBounds(polyline.getBounds());
-
-    if (!marker) {
-      marker = L.marker(coords[0], { icon: deliveryIcon }).addTo(map);
-    }
-
-    const steps = data.features[0].properties.segments[0].steps;
-    steps.forEach(step => {
-      const li = document.createElement("li");
-      li.textContent = step.instruction;
-      stepsList.appendChild(li);
-    });
-
-    index = 0;
-    if (highlightLine) map.removeLayer(highlightLine);
-    highlightLine = L.polyline([], { color: 'orange', weight: 5 }).addTo(map);
-    animateMarker();
-  })
-  .catch(err => {
-    console.error("Routing error:", err);
-    alert("🚫 Routing failed. Check your API key or network connection.");
+  const deliveryIcon = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1046/1046857.png',
+    iconSize: [40, 40],
+    iconAnchor: [20, 40]
   });
-}
+
+  // Draw Route using OpenRouteService
+  async function drawRoute(from, to, agentId) {
+    const apiKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c"; // public demo key
+    const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${from[1]},${from[0]}&end=${to[1]},${to[0]}`;
+
+    try {
+      const res = await fetch(url);
+      const json = await res.json();
+      const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+
+      // Remove previous route
+      if (agentRoutes[agentId]) {
+        map.removeLayer(agentRoutes[agentId]);
+      }
+
+      const routeLine = L.polyline(coords, { color: 'blue' }).addTo(map);
+      agentRoutes[agentId] = routeLine;
+
+    } catch (err) {
+      console.error("Route error for " + agentId, err);
+    }
+  }
+
+  // Listen for agents
+  const agentsRef = db.ref("agents");
+
+  agentsRef.on("value", (snapshot) => {
+    const agents = snapshot.val();
+    for (const agentId in agents) {
+      const agent = agents[agentId];
+      const position = [agent.lat, agent.lng];
+
+      if (!agentMarkers[agentId]) {
+        const marker = L.marker(position, { icon: deliveryIcon }).addTo(map)
+          .bindPopup(`${agent.name}`);
+        agentMarkers[agentId] = marker;
+      } else {
+        agentMarkers[agentId].setLatLng(position);
+      }
+
+      // Draw route from warehouse
+      drawRoute(warehouse, position, agentId);
+    }
+  });
 </script>
+
 </body>
 </html>
