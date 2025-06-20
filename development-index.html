@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Mashal Track Admin (Google Maps)</title>
-  <meta charset="utf-8" />
+  <title>Mashal Track Admin - Google Maps</title>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
-  <!-- Bootstrap -->
+
+  <!-- Bootstrap & Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
 
@@ -19,39 +19,40 @@
 </head>
 <body>
 
-<!-- Navbar -->
 <nav class="navbar navbar-dark bg-dark shadow-sm sticky-top">
-  <div class="container-fluid d-flex justify-content-between">
-    <span class="navbar-brand">🇮🇳 Mashal Track Admin</span>
+  <div class="container-fluid d-flex justify-content-between align-items-center">
+    <span class="navbar-brand h6 mb-0">🇮🇳 Mashal Track Admin (Google)</span>
     <div>
-      <button class="btn btn-sm btn-outline-light me-2" onclick="toggleDarkMode()">
+      <button class="btn btn-sm btn-outline-light me-2" onclick="toggleDarkMode()" title="Toggle Theme">
         <i class="bi bi-moon-stars-fill"></i>
       </button>
-      <button id="logoutBtn" class="btn btn-sm btn-outline-light d-none" onclick="logout()">Logout</button>
+      <button id="logoutBtn" onclick="logout()" class="btn btn-sm btn-outline-light d-none">Logout</button>
     </div>
   </div>
 </nav>
 
 <div class="container py-4">
-  <!-- Login -->
   <div id="loginDiv" class="card shadow-sm p-4 mx-auto" style="max-width: 400px;">
     <h4 class="text-center mb-3">Login to Track</h4>
     <div class="d-grid gap-2 mb-3">
-      <button class="btn btn-danger" onclick="googleLogin()"><i class="bi bi-google me-2"></i>Login with Google</button>
+      <button class="btn btn-danger" onclick="googleLogin()">
+        <i class="bi bi-google me-2"></i>Login with Google
+      </button>
     </div>
     <div class="form-floating mb-2">
       <input id="phone" class="form-control" placeholder="+91..." />
       <label for="phone">Mobile (+91...)</label>
     </div>
     <div id="recaptcha-container" class="mb-2"></div>
-    <button class="btn btn-primary w-100 mb-2" onclick="phoneLogin()"><i class="bi bi-phone-fill me-1"></i>Send OTP</button>
+    <button class="btn btn-primary w-100 mb-2" onclick="phoneLogin()">
+      <i class="bi bi-phone-fill me-1"></i>Send OTP
+    </button>
     <div id="otpGroup" class="input-group mb-2" style="display:none;">
       <input id="otp" class="form-control" placeholder="Enter OTP" />
       <button class="btn btn-success" onclick="verifyOTP()">Verify</button>
     </div>
   </div>
 
-  <!-- Tracking UI -->
   <div id="trackingUI" style="display:none;">
     <div class="card mb-3 shadow-sm mx-auto" style="max-width: 500px;">
       <div class="card-body d-flex align-items-center gap-3">
@@ -66,13 +67,13 @@
       <input id="destination" class="form-control" placeholder="Destination (e.g., Gandhinagar)" />
     </div>
     <div class="input-group mb-3 mx-auto" style="max-width: 500px;">
-      <input id="viaPoints" class="form-control" placeholder="Via (comma-separated, e.g., Ahmedabad, Baroda)" />
+      <input id="viaPoints" class="form-control" placeholder="Via (e.g., Ahmedabad, Baroda)" />
     </div>
     <div class="d-grid gap-2 mb-3 mx-auto" style="max-width: 500px;">
       <button class="btn btn-primary" onclick="startLiveTracking()">Start Tracking</button>
     </div>
     <div id="spinner" class="text-center my-3" style="display:none;">
-      <div class="spinner-border text-primary"></div>
+      <div class="spinner-border text-primary" role="status"></div>
       <p class="text-muted mt-2">Tracking live location...</p>
     </div>
   </div>
@@ -80,11 +81,13 @@
 
 <div id="map"></div>
 
-<!-- Scripts -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&libraries=places"></script>
+
+<!-- Google Maps JS API -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI&libraries=places"></script>
 
 <script>
   const firebaseConfig = {
@@ -100,9 +103,9 @@
   const auth = firebase.auth();
   const db = firebase.database();
 
-  let map, userId, userName = "", userMarker, destMarker, routePolyline;
-  let destinationCoords = null;
-  const otherMarkers = {};
+  let map, userId, userName = "", userMarker = null, routePolyline = null;
+  let directionsService, directionsRenderer;
+  const mashalIcon = { url: 'https://www.silvertouch.com/mailer/fire-masal.png', scaledSize: new google.maps.Size(40, 40) };
 
   function toggleDarkMode() {
     document.body.classList.toggle("dark-mode");
@@ -112,7 +115,10 @@
     if (user) {
       userId = user.uid;
       userName = user.displayName || user.phoneNumber || "User";
-      if (!user.displayName) userName = prompt("Enter your name:") || "User";
+      if (!user.displayName) {
+        const namePrompt = prompt("Enter your name:");
+        if (namePrompt) userName = namePrompt;
+      }
       document.getElementById("loginDiv").style.display = "none";
       document.getElementById("trackingUI").style.display = "block";
       document.getElementById("logoutBtn").classList.remove("d-none");
@@ -150,124 +156,116 @@
   }
 
   function logout() {
-    auth.signOut(); location.reload();
+    auth.signOut();
+    location.reload();
   }
 
   function initMap() {
     map = new google.maps.Map(document.getElementById("map"), {
       center: { lat: 22.9734, lng: 78.6569 },
-      zoom: 6
-    });
-
-    db.ref("liveUsers").on("value", snapshot => {
-      const users = snapshot.val() || {};
-      const now = Date.now();
-
-      for (const id in otherMarkers) {
-        if (!(id in users) || now - users[id].timestamp > 60000) {
-          otherMarkers[id].setMap(null);
-          delete otherMarkers[id];
-        }
+      zoom: 6,
+      restriction: {
+        latLngBounds: { north: 37.1, south: 6.5, west: 67, east: 97.5 },
+        strictBounds: true
       }
+    });
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true });
+    directionsRenderer.setMap(map);
 
+    db.ref("liveUsers").on("value", snap => {
+      const users = snap.val() || {}, now = Date.now();
       for (const id in users) {
         const u = users[id];
-        if ((now - u.timestamp) > 60000) continue;
-        if (id === userId) continue;
-
-        const pos = { lat: u.lat, lng: u.lng };
-        const content = `<strong>${u.name}</strong><br>${u.destination || ''}`;
-        if (!otherMarkers[id]) {
-          otherMarkers[id] = new google.maps.Marker({
-            position: pos,
+        if ((now - u.timestamp) / 1000 > 60) db.ref("liveUsers/" + id).remove();
+        else if (id !== userId) {
+          const marker = new google.maps.Marker({
+            position: { lat: u.lat, lng: u.lng },
             map,
-            title: u.name,
-            icon: "https://www.silvertouch.com/mailer/fire-masal.png"
+            icon: mashalIcon,
+            title: u.name
           });
-          const infowindow = new google.maps.InfoWindow({ content });
-          otherMarkers[id].addListener("click", () => infowindow.open(map, otherMarkers[id]));
-        } else {
-          otherMarkers[id].setPosition(pos);
         }
       }
     });
-  }
-
-  async function geocodeLocation(name) {
-    const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
-    const res = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${orsKey}&text=${encodeURIComponent(name)}`);
-    const data = await res.json();
-    const [lng, lat] = data.features[0].geometry.coordinates;
-    return { lat, lng };
-  }
-
-  async function drawRoute(points) {
-    const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
-    const res = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car/geojson`, {
-      method: "POST",
-      headers: { "Authorization": orsKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: points.map(p => [p.lng, p.lat]) })
-    });
-    const data = await res.json();
-    const path = data.features[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
-    if (routePolyline) routePolyline.setMap(null);
-    routePolyline = new google.maps.Polyline({ path, strokeColor: "blue", map });
-    map.fitBounds(path.reduce((b, p) => b.extend(p), new google.maps.LatLngBounds()));
   }
 
   async function startLiveTracking() {
     const dest = document.getElementById("destination").value.trim();
     const viaInput = document.getElementById("viaPoints").value.trim();
     if (!dest) return alert("Please enter destination.");
+    document.getElementById("spinner").style.display = "block";
 
     try {
-      document.getElementById("spinner").style.display = "block";
-      destinationCoords = await geocodeLocation(dest);
+      const geocoder = new google.maps.Geocoder();
+      const getCoords = async (place) => {
+        return new Promise((resolve, reject) => {
+          geocoder.geocode({ address: place }, (results, status) => {
+            if (status === 'OK') resolve(results[0].geometry.location);
+            else reject("Geocoding failed: " + status);
+          });
+        });
+      };
+
+      const destLoc = await getCoords(dest);
       document.getElementById("cardDest").innerText = dest;
 
-      const viaCoords = [];
+      const viaPoints = [];
       if (viaInput) {
-        const viaNames = viaInput.split(",").map(v => v.trim());
-        for (const name of viaNames) {
-          const coords = await geocodeLocation(name);
-          viaCoords.push(coords);
-        }
+        const places = viaInput.split(",").map(v => v.trim()).filter(Boolean);
+        for (const name of places) viaPoints.push(await getCoords(name));
       }
 
-      if (destMarker) destMarker.setMap(null);
-      destMarker = new google.maps.Marker({ position: destinationCoords, map, title: "Destination" });
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(async pos => {
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          document.getElementById("spinner").style.display = "none";
 
-      navigator.geolocation.watchPosition(pos => {
-        document.getElementById("spinner").style.display = "none";
-        const { latitude: lat, longitude: lng } = pos.coords;
-
-        db.ref("liveUsers/" + userId).set({
-          name: userName,
-          lat, lng,
-          destination: dest,
-          toLat: destinationCoords.lat,
-          toLng: destinationCoords.lng,
-          timestamp: Date.now()
-        });
-
-        if (!userMarker) {
-          userMarker = new google.maps.Marker({
-            position: { lat, lng },
-            map,
-            icon: "https://www.silvertouch.com/mailer/fire-masal.png"
+          db.ref("liveUsers/" + userId).set({
+            name: userName,
+            lat, lng,
+            destination: dest,
+            toLat: destLoc.lat(),
+            toLng: destLoc.lng(),
+            timestamp: Date.now()
           });
-        } else {
-          userMarker.setPosition({ lat, lng });
-        }
 
-        drawRoute([{ lat, lng }, ...viaCoords, destinationCoords]);
+          const currentPos = new google.maps.LatLng(lat, lng);
+          if (!userMarker) {
+            userMarker = new google.maps.Marker({
+              position: currentPos,
+              map,
+              icon: mashalIcon,
+              title: userName
+            });
+            map.setCenter(currentPos);
+          } else {
+            userMarker.setPosition(currentPos);
+          }
 
-      }, err => alert("GPS error: " + err.message), {
-        enableHighAccuracy: true, maximumAge: 1000, timeout: 5000
-      });
+          const waypoints = viaPoints.map(v => ({ location: v, stopover: true }));
+          const request = {
+            origin: currentPos,
+            destination: destLoc,
+            waypoints: waypoints,
+            travelMode: 'DRIVING'
+          };
 
+          directionsService.route(request, (result, status) => {
+            if (status === 'OK') directionsRenderer.setDirections(result);
+            else alert("Route error: " + status);
+          });
+
+        }, err => alert("GPS error: " + err.message), {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 5000
+        });
+      } else {
+        alert("Geolocation not supported.");
+      }
     } catch (e) {
-      alert("Error: " + e.message);
+      alert("Error: " + e);
       document.getElementById("spinner").style.display = "none";
     }
   }
