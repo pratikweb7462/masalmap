@@ -95,7 +95,7 @@
     authDomain: "myindiamapamritkal.firebaseapp.com",
     databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
     projectId: "myindiamapamritkal",
-    storageBucket: "myindiamapamritkal.firebasestorage.app",
+    storageBucket: "myindiamapamritkal.appspot.com",
     messagingSenderId: "830924864737",
     appId: "1:830924864737:web:7a096f506d004e19358ba0"
   };
@@ -103,9 +103,11 @@
   const auth = firebase.auth();
   const db = firebase.database();
 
-  let map, userId, userName = "", userMarker = null, routePolyline = null;
+  let map, userId, userName = "", userMarker = null;
   let directionsService, directionsRenderer;
   const mashalIcon = { url: 'https://www.silvertouch.com/mailer/fire-masal.png', scaledSize: new google.maps.Size(40, 40) };
+
+  let fromLat = null, fromLng = null; // new vars
 
   function toggleDarkMode() {
     document.body.classList.toggle("dark-mode");
@@ -172,22 +174,6 @@
     directionsService = new google.maps.DirectionsService();
     directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: true });
     directionsRenderer.setMap(map);
-
-    db.ref("liveUsers").on("value", snap => {
-      const users = snap.val() || {}, now = Date.now();
-      for (const id in users) {
-        const u = users[id];
-        if ((now - u.timestamp) / 1000 > 60) db.ref("liveUsers/" + id).remove();
-        else if (id !== userId) {
-          const marker = new google.maps.Marker({
-            position: { lat: u.lat, lng: u.lng },
-            map,
-            icon: mashalIcon,
-            title: u.name
-          });
-        }
-      }
-    });
   }
 
   async function startLiveTracking() {
@@ -215,18 +201,26 @@
         const places = viaInput.split(",").map(v => v.trim()).filter(Boolean);
         for (const name of places) viaPoints.push(await getCoords(name));
       }
+      const viaCoords = viaPoints.map(p => ({ lat: p.lat(), lng: p.lng() }));
 
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition(async pos => {
           const lat = pos.coords.latitude, lng = pos.coords.longitude;
           document.getElementById("spinner").style.display = "none";
 
+          if (fromLat === null || fromLng === null) {
+            fromLat = lat;
+            fromLng = lng;
+          }
+
           db.ref("liveUsers/" + userId).set({
             name: userName,
             lat, lng,
+            fromLat, fromLng,
             destination: dest,
             toLat: destLoc.lat(),
             toLng: destLoc.lng(),
+            viaPoints: viaCoords,
             timestamp: Date.now()
           });
 
@@ -243,11 +237,10 @@
             userMarker.setPosition(currentPos);
           }
 
-          const waypoints = viaPoints.map(v => ({ location: v, stopover: true }));
           const request = {
             origin: currentPos,
             destination: destLoc,
-            waypoints: waypoints,
+            waypoints: viaPoints.map(p => ({ location: p, stopover: true })),
             travelMode: 'DRIVING'
           };
 
@@ -270,6 +263,7 @@
     }
   }
 </script>
+
 
 </body>
 </html>
