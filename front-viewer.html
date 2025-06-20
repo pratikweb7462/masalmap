@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Delivery Viewer</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mashal Live Viewer (Google)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Bootstrap -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -11,16 +11,18 @@
   <style>
     html, body { margin: 0; padding: 0; height: 100%; }
     #map { height: 100vh; width: 100%; }
-    .gm-style .custom-popup img {
-      width: 50px; height: 50px; border-radius: 50%; margin-top: 5px;
-    }
+    .dark-mode { background-color: #121212; color: #f0f0f0; }
+    .dark-mode .navbar { background-color: #000 !important; }
   </style>
 </head>
 <body>
 
-<nav class="navbar navbar-dark bg-dark">
-  <div class="container-fluid">
-    <span class="navbar-brand mb-0">📍 Live Delivery Viewer</span>
+<nav class="navbar navbar-dark bg-dark shadow-sm">
+  <div class="container-fluid justify-content-between">
+    <span class="navbar-brand">📍 Live Delivery Viewer (Mashal)</span>
+    <button class="btn btn-outline-light btn-sm" onclick="toggleDarkMode()">
+      <i class="bi bi-moon-stars-fill"></i> Theme
+    </button>
   </div>
 </nav>
 
@@ -30,151 +32,90 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-<!-- Google Maps JS API -->
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI&libraries=geometry"></script>
+<!-- Google Maps JS -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.js"></script>
 
 <script>
-  // Firebase setup
   const firebaseConfig = {
     apiKey: "AIzaSyBesWChEdJEZRFRkXE8rpynY0lBez47SJA",
     authDomain: "myindiamapamritkal.firebaseapp.com",
     databaseURL: "https://myindiamapamritkal-default-rtdb.firebaseio.com",
     projectId: "myindiamapamritkal",
-    storageBucket: "myindiamapamritkal.firebasestorage.app",
+    storageBucket: "myindiamapamritkal.appspot.com",
     messagingSenderId: "830924864737",
     appId: "1:830924864737:web:7a096f506d004e19358ba0"
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  let map;
-  const userMarkers = {};
-  const userRoutes = {};
+  let map, bounds;
+  const markers = {};
+  const mashalIcon = {
+    url: 'https://www.silvertouch.com/mailer/fire-masal.png',
+    scaledSize: new google.maps.Size(40, 40)
+  };
+
+  function toggleDarkMode() {
+    document.body.classList.toggle("dark-mode");
+  }
 
   function initMap() {
     map = new google.maps.Map(document.getElementById("map"), {
       center: { lat: 22.9734, lng: 78.6569 },
-      zoom: 5,
+      zoom: 6,
       restriction: {
-        latLngBounds: {
-          north: 37.1, south: 6.5, west: 67.0, east: 97.5
-        },
-        strictBounds: true,
-      },
-      mapTypeControl: false,
-      streetViewControl: false
+        latLngBounds: { north: 37.1, south: 6.5, west: 67, east: 97.5 },
+        strictBounds: true
+      }
     });
 
-    listenToLiveUsers();
-  }
+    bounds = new google.maps.LatLngBounds();
 
-  function listenToLiveUsers() {
-    db.ref("liveUsers").on("value", async snapshot => {
-      const users = snapshot.val() || {};
+    db.ref("liveUsers").on("value", snap => {
+      const users = snap.val() || {};
       const now = Date.now();
-      const bounds = new google.maps.LatLngBounds();
 
+      // Remove old markers
+      for (const id in markers) {
+        if (!users[id] || (now - users[id].timestamp) > 60000) {
+          markers[id].setMap(null);
+          delete markers[id];
+        }
+      }
+
+      // Add/update live markers
       for (const id in users) {
         const u = users[id];
-        const age = (now - u.timestamp) / 1000;
-        if (age > 60) continue;
+        if ((now - u.timestamp) > 60000) continue;
 
-        const position = { lat: u.lat, lng: u.lng };
+        const position = new google.maps.LatLng(u.lat, u.lng);
         bounds.extend(position);
 
-        const infoHtml = `
-          <div class="custom-popup">
-            <strong>${u.name || 'User'}</strong><br>
-            ${u.destination || 'No destination'}<br>
-            ${u.photoURL ? `<img src="${u.photoURL}" alt="photo">` : ""}
-          </div>
-        `;
-
-        if (!userMarkers[id]) {
+        if (markers[id]) {
+          markers[id].setPosition(position);
+        } else {
           const marker = new google.maps.Marker({
             position,
             map,
-            icon: {
-              url: 'https://www.silvertouch.com/mailer/fire-masal.png',
-              scaledSize: new google.maps.Size(40, 40),
-            }
+            icon: mashalIcon,
+            title: u.name
           });
 
-          const info = new google.maps.InfoWindow({ content: infoHtml });
-          marker.addListener('click', () => info.open(map, marker));
-          marker.info = info;
-          userMarkers[id] = marker;
-        } else {
-          animateMarker(userMarkers[id], position);
-          userMarkers[id].info.setContent(infoHtml);
-        }
+          const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>${u.name}</strong><br/>📍 ${u.destination || "N/A"}`
+          });
 
-        // Route drawing
-        if (u.toLat && u.toLng) {
-          const routeKey = `${id}-route`;
-          const path = await getRoutePath(u.lat, u.lng, u.toLat, u.toLng);
-          if (path) {
-            if (userRoutes[routeKey]) userRoutes[routeKey].setMap(null);
-            userRoutes[routeKey] = new google.maps.Polyline({
-              path,
-              strokeColor: "#1976d2",
-              strokeOpacity: 1,
-              strokeWeight: 3,
-              map
-            });
-            path.forEach(p => bounds.extend(p));
-          }
+          marker.addListener("click", () => infoWindow.open(map, marker));
+          markers[id] = marker;
         }
       }
 
-      // Remove old markers
-      for (const id in userMarkers) {
-        if (!users[id] || (now - users[id].timestamp) / 1000 > 60) {
-          userMarkers[id].setMap(null);
-          delete userMarkers[id];
-        }
-      }
-
-      map.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
+      map.fitBounds(bounds);
     });
   }
 
-  function animateMarker(marker, newPos) {
-    const duration = 1000;
-    const steps = 20;
-    const oldPos = marker.getPosition();
-    const deltaLat = (newPos.lat - oldPos.lat()) / steps;
-    const deltaLng = (newPos.lng - oldPos.lng()) / steps;
-    let step = 0;
-
-    function move() {
-      const lat = oldPos.lat() + deltaLat * step;
-      const lng = oldPos.lng() + deltaLng * step;
-      marker.setPosition({ lat, lng });
-      step++;
-      if (step <= steps) requestAnimationFrame(move);
-    }
-
-    move();
-  }
-
-  async function getRoutePath(fromLat, fromLng, toLat, toLng) {
-    try {
-      const key = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
-      const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${key}&start=${fromLng},${fromLat}&end=${toLng},${toLat}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      return data.features[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] }));
-    } catch (err) {
-      console.warn("Route fetch failed:", err);
-      return null;
-    }
-  }
-
-  window.initMap = initMap;
+  window.onload = initMap;
 </script>
-
-<!-- Load Google Map -->
-<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI&callback=initMap"></script>
 </body>
 </html>
