@@ -1,22 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Delivery Viewer (Animated)</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
+  <title>Live Delivery Viewer (Google Maps)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-  <script src="https://apis.mappls.com/advancedmaps/v1/3613a4d240f8da7df8e8f0dc14410fbc/map_load?v=1.5"></script>
-  <script src="https://apis.mappls.com/advancedmaps/v1/3613a4d240f8da7df8e8f0dc14410fbc/leaflet_plugin.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; height: 100%; }
+    html, body { height: 100%; margin: 0; padding: 0; }
     #map { height: 100vh; width: 100%; }
-    .leaflet-popup-content img {
+    .gm-style .gm-style-iw img {
       border-radius: 50%;
-      margin-top: 5px;
       width: 60px;
       height: 60px;
+      margin-top: 5px;
     }
   </style>
 </head>
@@ -24,13 +20,13 @@
 
 <nav class="navbar navbar-dark bg-dark">
   <div class="container-fluid">
-    <span class="navbar-brand mb-0">📍 Live Delivery Viewer (Animated)</span>
+    <span class="navbar-brand">📍 Live Delivery Viewer (Google Maps)</span>
   </div>
 </nav>
 
 <div id="map"></div>
 
-<!-- Firebase -->
+<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -47,106 +43,123 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  const orsKey = "5b3ce3597851110001cf624851251b0ba51a41d9800fbb30dac99a4c";
-
-  const mashalIcon = L.icon({
-    iconUrl: 'https://www.silvertouch.com/mailer/fire-masal.png',
-    iconSize: [40, 40],
-    iconAnchor: [20, 40],
-    popupAnchor: [0, -40]
-  });
-
-  const map = L.map('map', {
-    center: [22.9734, 78.6569],
-    zoom: 5,
-    minZoom: 5,
-    maxZoom: 18,
-    maxBounds: [[6.5, 67], [37.1, 97.5]],
-    maxBoundsViscosity: 1.0
-  });
-
-  L.mappls.tileLayer({}).addTo(map);
-
+  let map;
   const userMarkers = {};
   const userRoutes = {};
+  const mashalIcon = "https://www.silvertouch.com/mailer/fire-masal.png";
 
-  function animateMarker(marker, targetLatLng, duration = 1000) {
-    const start = marker.getLatLng();
-    const startTime = performance.now();
-    function animate(time) {
-      const elapsed = time - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const lat = start.lat + (targetLatLng.lat - start.lat) * progress;
-      const lng = start.lng + (targetLatLng.lng - start.lng) * progress;
-      marker.setLatLng([lat, lng]);
-      if (progress < 1) requestAnimationFrame(animate);
-    }
-    requestAnimationFrame(animate);
+  function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+      center: { lat: 22.9734, lng: 78.6569 },
+      zoom: 5,
+      minZoom: 5,
+      restriction: {
+        latLngBounds: {
+          north: 37.1,
+          south: 6.5,
+          west: 67,
+          east: 97.5
+        },
+        strictBounds: true
+      }
+    });
+
+    db.ref("liveUsers").on("value", async snap => {
+      const users = snap.val() || {};
+      const now = Date.now();
+      const bounds = new google.maps.LatLngBounds();
+
+      for (const id in users) {
+        const u = users[id];
+        if ((now - u.timestamp) / 1000 > 60) continue;
+
+        const pos = new google.maps.LatLng(u.lat, u.lng);
+        bounds.extend(pos);
+
+        const content = `
+          <strong>${u.name || "User"}</strong><br>
+          ${u.destination || "No destination"}<br>
+          ${u.photoURL ? `<img src="${u.photoURL}" alt="photo">` : ""}
+        `;
+
+        if (!userMarkers[id]) {
+          userMarkers[id] = new google.maps.Marker({
+            position: pos,
+            map,
+            icon: {
+              url: mashalIcon,
+              scaledSize: new google.maps.Size(40, 40),
+              anchor: new google.maps.Point(20, 40)
+            }
+          });
+          userMarkers[id].infowindow = new google.maps.InfoWindow({ content });
+          userMarkers[id].addListener("click", () => userMarkers[id].infowindow.open(map, userMarkers[id]));
+        } else {
+          userMarkers[id].setPosition(pos);
+          userMarkers[id].infowindow.setContent(content);
+        }
+
+        if (u.toLat && u.toLng) {
+          const routePath = await fetchRoute(u.lat, u.lng, u.toLat, u.toLng);
+          if (routePath && routePath.length) {
+            if (userRoutes[id]) userRoutes[id].setMap(null);
+            userRoutes[id] = new google.maps.Polyline({
+              path: routePath,
+              geodesic: true,
+              strokeColor: "#3366cc",
+              strokeOpacity: 1.0,
+              strokeWeight: 3,
+              map
+            });
+            routePath.forEach(coord => bounds.extend(coord));
+          }
+        }
+      }
+
+      for (const id in userMarkers) {
+        if (!(id in users) || (now - users[id]?.timestamp) / 1000 > 60) {
+          userMarkers[id].setMap(null);
+          delete userMarkers[id];
+          if (userRoutes[id]) {
+            userRoutes[id].setMap(null);
+            delete userRoutes[id];
+          }
+        }
+      }
+
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds);
+      }
+    });
   }
 
-  db.ref("liveUsers").on("value", async snap => {
-    const users = snap.val() || {};
-    const now = Date.now();
-    const allLatLngs = [];
-
-    for (const id in users) {
-      const u = users[id];
-      const age = (now - u.timestamp) / 1000;
-      if (age > 60) continue;
-
-      const popup = `
-        <strong>${u.name || 'User'}</strong><br>
-        ${u.destination || 'No destination'}<br>
-        ${u.photoURL ? `<img src="${u.photoURL}" alt="photo">` : ""}
-      `;
-      const latlng = { lat: u.lat, lng: u.lng };
-      allLatLngs.push([u.lat, u.lng]);
-
-      if (!userMarkers[id]) {
-        userMarkers[id] = L.marker(latlng, { icon: mashalIcon })
-          .addTo(map)
-          .bindPopup(popup);
-      } else {
-        animateMarker(userMarkers[id], latlng);
-        userMarkers[id].setPopupContent(popup);
-      }
-
-      if (u.toLat && u.toLng) {
-        const from = `${u.lng},${u.lat}`;
-        const to = `${u.toLng},${u.toLat}`;
-        const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsKey}&start=${from}&end=${to}`;
-
-        try {
-          const res = await fetch(url);
-          const json = await res.json();
-          const coords = json.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          if (userRoutes[id]) map.removeLayer(userRoutes[id]);
-          userRoutes[id] = L.polyline(coords, { color: 'blue' }).addTo(map);
-          coords.forEach(c => allLatLngs.push(c));
-        } catch (err) {
-          console.warn("Route error for user", id, err);
-        }
-      }
+  async function fetchRoute(lat1, lng1, lat2, lng2) {
+    try {
+      const key = "AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI";
+      const response = await fetch(`https://routes.googleapis.com/directions/v2:computeRoutes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": "routes.polyline.encodedPolyline"
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: { latitude: lat1, longitude: lng1 } } },
+          destination: { location: { latLng: { latitude: lat2, longitude: lng2 } } },
+          travelMode: "DRIVE"
+        })
+      });
+      const data = await response.json();
+      const encoded = data?.routes?.[0]?.polyline?.encodedPolyline;
+      if (!encoded) return null;
+      return google.maps.geometry.encoding.decodePath(encoded);
+    } catch (err) {
+      console.warn("Route error", err);
+      return null;
     }
-
-    for (const id in userMarkers) {
-      if (!(id in users) || (now - users[id]?.timestamp) / 1000 > 60) {
-        map.removeLayer(userMarkers[id]);
-        delete userMarkers[id];
-        if (userRoutes[id]) {
-          map.removeLayer(userRoutes[id]);
-          delete userRoutes[id];
-        }
-      }
-    }
-
-    // ✅ Fit map to bounds
-    if (allLatLngs.length) {
-      const bounds = L.latLngBounds(allLatLngs);
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-  });
+  }
 </script>
 
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI&callback=initMap&libraries=geometry"></script>
 </body>
 </html>
