@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Mashal Live Viewer (Google)</title>
+  <title>Mashal Live Viewer (Enhanced)</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -32,9 +32,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-<!-- Google Maps JS -->
+<!-- Google Maps -->
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDt5vnzRbwQtgqPDAXdDHA3mqXDmSbOMSI"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.js"></script>
 
 <script>
   const firebaseConfig = {
@@ -51,13 +50,28 @@
 
   let map, bounds;
   const markers = {};
+  const polylines = {};
   const mashalIcon = {
     url: 'https://www.silvertouch.com/mailer/fire-masal.png',
     scaledSize: new google.maps.Size(40, 40)
   };
+  const directionsService = new google.maps.DirectionsService();
 
   function toggleDarkMode() {
     document.body.classList.toggle("dark-mode");
+  }
+
+  function animateMarker(marker, newPos) {
+    const deltaLat = (newPos.lat() - marker.getPosition().lat()) / 60;
+    const deltaLng = (newPos.lng() - marker.getPosition().lng()) / 60;
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i >= 60) return clearInterval(interval);
+      const lat = marker.getPosition().lat() + deltaLat;
+      const lng = marker.getPosition().lng() + deltaLng;
+      marker.setPosition(new google.maps.LatLng(lat, lng));
+      i++;
+    }, 16); // ~1 second total animation
   }
 
   function initMap() {
@@ -76,38 +90,60 @@
       const users = snap.val() || {};
       const now = Date.now();
 
-      // Remove old markers
+      // Cleanup old markers and polylines
       for (const id in markers) {
-        if (!users[id] || (now - users[id].timestamp) > 60000) {
+        if (!users[id] || (now - users[id].timestamp > 60000)) {
           markers[id].setMap(null);
+          if (polylines[id]) polylines[id].setMap(null);
           delete markers[id];
+          delete polylines[id];
         }
       }
 
-      // Add/update live markers
       for (const id in users) {
         const u = users[id];
         if ((now - u.timestamp) > 60000) continue;
 
-        const position = new google.maps.LatLng(u.lat, u.lng);
-        bounds.extend(position);
+        const currentPos = new google.maps.LatLng(u.lat, u.lng);
+        bounds.extend(currentPos);
 
         if (markers[id]) {
-          markers[id].setPosition(position);
+          animateMarker(markers[id], currentPos);
         } else {
           const marker = new google.maps.Marker({
-            position,
+            position: currentPos,
             map,
             icon: mashalIcon,
             title: u.name
           });
-
-          const infoWindow = new google.maps.InfoWindow({
-            content: `<strong>${u.name}</strong><br/>📍 ${u.destination || "N/A"}`
+          const info = new google.maps.InfoWindow({
+            content: `<strong>${u.name}</strong><br>📍 ${u.destination || 'N/A'}`
           });
-
-          marker.addListener("click", () => infoWindow.open(map, marker));
+          marker.addListener("click", () => info.open(map, marker));
           markers[id] = marker;
+        }
+
+        // Draw or update route
+        if (u.toLat && u.toLng) {
+          const destLatLng = new google.maps.LatLng(u.toLat, u.toLng);
+          directionsService.route({
+            origin: currentPos,
+            destination: destLatLng,
+            travelMode: 'DRIVING'
+          }, (res, status) => {
+            if (status === "OK") {
+              if (polylines[id]) polylines[id].setMap(null);
+              const path = new google.maps.Polyline({
+                path: res.routes[0].overview_path,
+                geodesic: true,
+                strokeColor: "#1E90FF",
+                strokeOpacity: 0.7,
+                strokeWeight: 4,
+                map
+              });
+              polylines[id] = path;
+            }
+          });
         }
       }
 
